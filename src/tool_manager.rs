@@ -1,3 +1,19 @@
+// ADNT - Dynamic CLI tool manager for ADNT projects
+// Copyright (C) 2025 ADNT Sàrl <info@adnt.io>
+//
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+//
+// You should have received a copy of the GNU General Public License
+// along with this program.  If not, see <https://www.gnu.org/licenses/>.
+
 use anyhow::{Context, Result};
 use colored::Colorize;
 use indicatif::{ProgressBar, ProgressStyle};
@@ -355,47 +371,46 @@ impl ToolManager {
             );
         } else {
             // Check for updates
-            let pb = ProgressBar::new_spinner();
-            pb.set_style(
-                ProgressStyle::default_spinner()
-                    .template("{spinner:.cyan} {msg}")
-                    .unwrap(),
-            );
-            pb.set_message("Checking for updates...");
+            if force_update {
+                let pb: ProgressBar = ProgressBar::new_spinner();
+                pb.set_style(
+                    ProgressStyle::default_spinner()
+                        .template("{spinner:.cyan} {msg}")
+                        .unwrap(),
+                );
+                pb.set_message("Checking for updates...");
 
-            let local_commit = self.get_latest_commit(&tool_path).await?;
-            let remote_commit = self.get_remote_commit(&repo_url).await?;
+                let local_commit = self.get_latest_commit(&tool_path).await?;
+                let remote_commit = self.get_remote_commit(&repo_url).await?;
 
-            if force_update || local_commit != remote_commit {
-                if force_update {
-                    pb.set_message("Force updating...");
-                } else {
-                    pb.set_message("Update available. Updating...");
+                if local_commit != remote_commit {
+                    if force_update {
+                        pb.set_message("Force updating...");
+                    } else {
+                        pb.set_message("Update available. Updating...");
+                    }
+                    let start = Instant::now();
+
+                    self.update_repo(&tool_path).await?;
+                    self.build_tool(&tool_path).await?;
+
+                    self.state.tools.insert(
+                        full_tool_name.clone(),
+                        ToolInfo {
+                            repo_url: repo_url.clone(),
+                            last_commit: remote_commit,
+                            installed_at: chrono::Local::now().to_rfc3339(),
+                        },
+                    );
+                    self.save_state()?;
+
+                    pb.finish_and_clear();
+                    let duration = start.elapsed();
+                    println!(
+                        "{}",
+                        format!("✓ Update completed in {:.2}s", duration.as_secs_f64()).green()
+                    );
                 }
-                let start = Instant::now();
-
-                self.update_repo(&tool_path).await?;
-                self.build_tool(&tool_path).await?;
-
-                self.state.tools.insert(
-                    full_tool_name.clone(),
-                    ToolInfo {
-                        repo_url: repo_url.clone(),
-                        last_commit: remote_commit,
-                        installed_at: chrono::Local::now().to_rfc3339(),
-                    },
-                );
-                self.save_state()?;
-
-                pb.finish_and_clear();
-                let duration = start.elapsed();
-                println!(
-                    "{}",
-                    format!("✓ Update completed in {:.2}s", duration.as_secs_f64()).green()
-                );
-            } else {
-                pb.finish_and_clear();
-                println!("{}", "✓ Tool is up to date".green());
             }
         }
 

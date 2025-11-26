@@ -248,4 +248,6 @@ GITHUB_TOKEN=ghp_xxx adnt list
 
 ## License
 
-MIT
+This project is licensed under the GNU General Public License v3.0 or later - see the [LICENSE](LICENSE) file for details.
+
+Copyright (C) 2025 ADNT Sàrl <info@adnt.io>
