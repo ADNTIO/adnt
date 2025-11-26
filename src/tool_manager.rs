@@ -361,6 +361,8 @@ impl ToolManager {
     }
 
     #[cfg(test)]
+    /// Creates a new ToolManager with custom paths for testing purposes.
+    /// This bypasses the default home directory paths to allow isolated testing.
     fn new_with_paths(tools_dir: PathBuf, state_file: PathBuf) -> Result<Self> {
         fs::create_dir_all(&tools_dir).context("Failed to create tools directory")?;
 
