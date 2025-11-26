@@ -122,7 +122,7 @@ async fn handle_config_command(subcommand: ConfigCommands) -> Result<()> {
             println!("{}", "✓ Token saved successfully".green());
             println!(
                 "{}",
-                format!("  Config file: ~/.config/adnt/config.json").dimmed()
+                "  Config file: ~/.config/adnt/config.json".dimmed()
             );
 
             // Verify token scopes immediately
@@ -183,7 +183,7 @@ async fn handle_config_command(subcommand: ConfigCommands) -> Result<()> {
             println!("{}", "✓ GitHub token saved successfully".green());
             println!(
                 "{}",
-                format!("  Config file: ~/.config/adnt/config.json").dimmed()
+                "  Config file: ~/.config/adnt/config.json".dimmed()
             );
         }
         ConfigCommands::Status => {
@@ -212,7 +212,7 @@ async fn handle_config_command(subcommand: ConfigCommands) -> Result<()> {
                         );
                     }
                 } else if std::process::Command::new("gh")
-                    .args(&["auth", "status"])
+                    .args(["auth", "status"])
                     .output()
                     .is_ok()
                 {

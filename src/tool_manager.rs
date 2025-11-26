@@ -20,7 +20,7 @@ use indicatif::{ProgressBar, ProgressStyle};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::Stdio;
 use std::time::Instant;
 use tokio::process::Command;
@@ -124,9 +124,9 @@ impl ToolManager {
         repo_url.to_string()
     }
 
-    async fn get_latest_commit(&self, repo_path: &PathBuf) -> Result<String> {
+    async fn get_latest_commit(&self, repo_path: &Path) -> Result<String> {
         let output = Command::new("git")
-            .args(&["-C", repo_path.to_str().unwrap(), "rev-parse", "HEAD"])
+            .args(["-C", repo_path.to_str().unwrap(), "rev-parse", "HEAD"])
             .output()
             .await?;
 
@@ -138,7 +138,7 @@ impl ToolManager {
         let remote_url = self.get_authenticated_url(repo_url);
 
         let output = Command::new("git")
-            .args(&["ls-remote", &remote_url, "HEAD"])
+            .args(["ls-remote", &remote_url, "HEAD"])
             .output()
             .await?;
 
@@ -150,12 +150,12 @@ impl ToolManager {
         Ok(commit.to_string())
     }
 
-    async fn clone_repo(&self, repo_url: &str, dest: &PathBuf) -> Result<()> {
+    async fn clone_repo(&self, repo_url: &str, dest: &Path) -> Result<()> {
         // Use authenticated URL if we have a token
         let clone_url = self.get_authenticated_url(repo_url);
 
         let output = Command::new("git")
-            .args(&["clone", &clone_url, dest.to_str().unwrap()])
+            .args(["clone", &clone_url, dest.to_str().unwrap()])
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             .output()
@@ -171,12 +171,12 @@ impl ToolManager {
         Ok(())
     }
 
-    async fn update_repo(&self, repo_path: &PathBuf) -> Result<()> {
+    async fn update_repo(&self, repo_path: &Path) -> Result<()> {
         // If we have a token, update the remote URL to use authentication
         if self.github_client.has_token() {
             // Get current remote URL
             let output = Command::new("git")
-                .args(&[
+                .args([
                     "-C",
                     repo_path.to_str().unwrap(),
                     "remote",
@@ -192,7 +192,7 @@ impl ToolManager {
 
                 // Update remote URL with authentication
                 Command::new("git")
-                    .args(&[
+                    .args([
                         "-C",
                         repo_path.to_str().unwrap(),
                         "remote",
@@ -206,7 +206,7 @@ impl ToolManager {
         }
 
         let output = Command::new("git")
-            .args(&["-C", repo_path.to_str().unwrap(), "pull", "--ff-only"])
+            .args(["-C", repo_path.to_str().unwrap(), "pull", "--ff-only"])
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             .output()
@@ -222,9 +222,9 @@ impl ToolManager {
         Ok(())
     }
 
-    async fn build_tool(&self, repo_path: &PathBuf) -> Result<()> {
+    async fn build_tool(&self, repo_path: &Path) -> Result<()> {
         let output = Command::new("cargo")
-            .args(&["build", "--release"])
+            .args(["build", "--release"])
             .current_dir(repo_path)
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
@@ -243,7 +243,7 @@ impl ToolManager {
 
     async fn run_binary(
         &self,
-        repo_path: &PathBuf,
+        repo_path: &Path,
         tool_name: &str,
         args: Vec<String>,
     ) -> Result<()> {

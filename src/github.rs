@@ -102,7 +102,7 @@ impl GitHubClient {
 
         // Priority 3: Try gh CLI token
         if let Ok(output) = std::process::Command::new("gh")
-            .args(&["auth", "token"])
+            .args(["auth", "token"])
             .output()
         {
             if output.status.success() {
@@ -133,7 +133,7 @@ impl GitHubClient {
 
         let response = self
             .client
-            .get(&format!("{}/user", GITHUB_API_BASE))
+            .get(format!("{}/user", GITHUB_API_BASE))
             .header("Authorization", format!("Bearer {}", token))
             .send()
             .await?;
@@ -200,7 +200,7 @@ impl GitHubClient {
         println!("\n{}", "Waiting for authentication...".dimmed());
 
         // Try to open browser automatically
-        if let Err(_) = open::that(&device_response.verification_uri) {
+        if open::that(&device_response.verification_uri).is_err() {
             println!("{}", "  (Could not open browser automatically)".dimmed());
         }
 
