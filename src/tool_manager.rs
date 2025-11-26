@@ -406,7 +406,7 @@ mod tests {
         let tools_dir = temp_dir.path().join("tools");
         let state_file = temp_dir.path().join("state.json");
 
-        let mut manager = ToolManager::new_with_paths(tools_dir.clone(), state_file).unwrap();
+        let mut manager = ToolManager::new_with_paths(tools_dir.clone(), state_file.clone()).unwrap();
 
         // Create a fake tool directory
         let tool_dir = tools_dir.join("adnt-test-app");
@@ -430,8 +430,13 @@ mod tests {
         // Verify directory is removed
         assert!(!tool_dir.exists());
 
-        // Verify state is updated
+        // Verify in-memory state is updated
         assert!(!manager.state.tools.contains_key("adnt-test-app"));
+
+        // Verify state is persisted to disk
+        let state_content = fs::read_to_string(&state_file).unwrap();
+        let saved_state: ToolsState = serde_json::from_str(&state_content).unwrap();
+        assert!(!saved_state.tools.contains_key("adnt-test-app"));
     }
 
     #[test]
@@ -440,7 +445,7 @@ mod tests {
         let tools_dir = temp_dir.path().join("tools");
         let state_file = temp_dir.path().join("state.json");
 
-        let mut manager = ToolManager::new_with_paths(tools_dir, state_file).unwrap();
+        let mut manager = ToolManager::new_with_paths(tools_dir, state_file.clone()).unwrap();
 
         // Add tool to state but don't create directory
         manager.state.tools.insert(
@@ -456,7 +461,12 @@ mod tests {
         let result = manager.remove_tool("orphan-app");
         assert!(result.is_ok());
 
-        // Verify state is updated
+        // Verify in-memory state is updated
         assert!(!manager.state.tools.contains_key("adnt-orphan-app"));
+
+        // Verify state is persisted to disk
+        let state_content = fs::read_to_string(&state_file).unwrap();
+        let saved_state: ToolsState = serde_json::from_str(&state_content).unwrap();
+        assert!(!saved_state.tools.contains_key("adnt-orphan-app"));
     }
 }
