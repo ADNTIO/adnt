@@ -59,6 +59,34 @@ impl ToolManager {
         Ok(())
     }
 
+    /// Remove a tool's cached artifacts from disk and state
+    pub fn remove_tool(&mut self, tool_name: &str) -> Result<()> {
+        let full_tool_name = format!("adnt-{}", tool_name);
+        let tool_path = self.tools_dir.join(&full_tool_name);
+
+        let dir_exists = tool_path.exists();
+        let in_state = self.state.tools.contains_key(&full_tool_name);
+
+        if !dir_exists && !in_state {
+            println!("{}", format!("Tool '{}' is not installed.", full_tool_name).yellow());
+            return Ok(());
+        }
+
+        if dir_exists {
+            fs::remove_dir_all(&tool_path)
+                .context(format!("Failed to remove tool directory: {:?}", tool_path))?;
+        }
+
+        if in_state {
+            self.state.tools.remove(&full_tool_name);
+            self.save_state()?;
+        }
+
+        println!("{}", format!("✓ Removed '{}' from cache.", full_tool_name).green());
+
+        Ok(())
+    }
+
     /// Convert a GitHub HTTPS URL to an authenticated URL using the OAuth token
     fn get_authenticated_url(&self, repo_url: &str) -> String {
         if let Some(token) = self.github_client.get_token() {
@@ -330,5 +358,105 @@ impl ToolManager {
         self.run_binary(&tool_path, &full_tool_name, args).await?;
 
         Ok(())
+    }
+
+    #[cfg(test)]
+    /// Creates a new ToolManager with custom paths for testing purposes.
+    /// This bypasses the default home directory paths to allow isolated testing.
+    fn new_with_paths(tools_dir: PathBuf, state_file: PathBuf) -> Result<Self> {
+        fs::create_dir_all(&tools_dir).context("Failed to create tools directory")?;
+
+        let state = if state_file.exists() {
+            let content = fs::read_to_string(&state_file)?;
+            serde_json::from_str(&content).unwrap_or_default()
+        } else {
+            ToolsState::default()
+        };
+
+        Ok(Self {
+            tools_dir,
+            state_file,
+            state,
+            github_client: GitHubClient::new(),
+        })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tempfile::tempdir;
+
+    #[test]
+    fn test_remove_tool_not_installed() {
+        let temp_dir = tempdir().unwrap();
+        let tools_dir = temp_dir.path().join("tools");
+        let state_file = temp_dir.path().join("state.json");
+
+        let mut manager = ToolManager::new_with_paths(tools_dir, state_file).unwrap();
+        
+        // Should succeed without error when tool doesn't exist
+        let result = manager.remove_tool("nonexistent");
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_remove_tool_installed() {
+        let temp_dir = tempdir().unwrap();
+        let tools_dir = temp_dir.path().join("tools");
+        let state_file = temp_dir.path().join("state.json");
+
+        let mut manager = ToolManager::new_with_paths(tools_dir.clone(), state_file).unwrap();
+
+        // Create a fake tool directory
+        let tool_dir = tools_dir.join("adnt-test-app");
+        fs::create_dir_all(&tool_dir).unwrap();
+        fs::write(tool_dir.join("dummy.txt"), "test content").unwrap();
+
+        // Add tool to state
+        manager.state.tools.insert(
+            "adnt-test-app".to_string(),
+            ToolInfo {
+                repo_url: "https://github.com/test/repo".to_string(),
+                last_commit: "abc123".to_string(),
+                installed_at: "2024-01-01T00:00:00Z".to_string(),
+            },
+        );
+
+        // Remove the tool
+        let result = manager.remove_tool("test-app");
+        assert!(result.is_ok());
+
+        // Verify directory is removed
+        assert!(!tool_dir.exists());
+
+        // Verify state is updated
+        assert!(!manager.state.tools.contains_key("adnt-test-app"));
+    }
+
+    #[test]
+    fn test_remove_tool_in_state_but_no_directory() {
+        let temp_dir = tempdir().unwrap();
+        let tools_dir = temp_dir.path().join("tools");
+        let state_file = temp_dir.path().join("state.json");
+
+        let mut manager = ToolManager::new_with_paths(tools_dir, state_file).unwrap();
+
+        // Add tool to state but don't create directory
+        manager.state.tools.insert(
+            "adnt-orphan-app".to_string(),
+            ToolInfo {
+                repo_url: "https://github.com/test/repo".to_string(),
+                last_commit: "abc123".to_string(),
+                installed_at: "2024-01-01T00:00:00Z".to_string(),
+            },
+        );
+
+        // Remove the tool - should clean up state even without directory
+        let result = manager.remove_tool("orphan-app");
+        assert!(result.is_ok());
+
+        // Verify state is updated
+        assert!(!manager.state.tools.contains_key("adnt-orphan-app"));
     }
 }
