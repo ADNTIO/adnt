@@ -120,10 +120,7 @@ async fn handle_config_command(subcommand: ConfigCommands) -> Result<()> {
             let token = GitHubClient::device_flow_login().await?;
             GitHubClient::save_token(&token)?;
             println!("{}", "✓ Token saved successfully".green());
-            println!(
-                "{}",
-                "  Config file: ~/.config/adnt/config.json".dimmed()
-            );
+            println!("{}", "  Config file: ~/.config/adnt/config.json".dimmed());
 
             // Verify token scopes immediately
             println!("\n{}", "Verifying token scopes...".dimmed());
@@ -181,10 +178,7 @@ async fn handle_config_command(subcommand: ConfigCommands) -> Result<()> {
 
             GitHubClient::save_token(&token)?;
             println!("{}", "✓ GitHub token saved successfully".green());
-            println!(
-                "{}",
-                "  Config file: ~/.config/adnt/config.json".dimmed()
-            );
+            println!("{}", "  Config file: ~/.config/adnt/config.json".dimmed());
         }
         ConfigCommands::Status => {
             let client = GitHubClient::new();

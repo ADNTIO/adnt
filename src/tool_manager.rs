@@ -241,12 +241,7 @@ impl ToolManager {
         Ok(())
     }
 
-    async fn run_binary(
-        &self,
-        repo_path: &Path,
-        tool_name: &str,
-        args: Vec<String>,
-    ) -> Result<()> {
+    async fn run_binary(&self, repo_path: &Path, tool_name: &str, args: Vec<String>) -> Result<()> {
         let binary_path = repo_path.join("target/release").join(tool_name);
 
         let status = Command::new(binary_path).args(&args).status().await?;
