@@ -59,6 +59,27 @@ impl ToolManager {
         Ok(())
     }
 
+    /// Remove a tool's cached artifacts from disk and state
+    pub fn remove_tool(&mut self, tool_name: &str) -> Result<()> {
+        let full_tool_name = format!("adnt-{}", tool_name);
+        let tool_path = self.tools_dir.join(&full_tool_name);
+
+        if !tool_path.exists() {
+            println!("{}", format!("Tool '{}' is not installed.", full_tool_name).yellow());
+            return Ok(());
+        }
+
+        fs::remove_dir_all(&tool_path)
+            .context(format!("Failed to remove tool directory: {:?}", tool_path))?;
+
+        self.state.tools.remove(&full_tool_name);
+        self.save_state()?;
+
+        println!("{}", format!("✓ Removed '{}' from cache.", full_tool_name).green());
+
+        Ok(())
+    }
+
     /// Convert a GitHub HTTPS URL to an authenticated URL using the OAuth token
     fn get_authenticated_url(&self, repo_url: &str) -> String {
         if let Some(token) = self.github_client.get_token() {

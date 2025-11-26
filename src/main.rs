@@ -39,6 +39,12 @@ enum Commands {
         args: Vec<String>,
     },
 
+    /// Remove an app from cache to force clean reinstall or free disk space
+    Rm {
+        /// Tool name (without 'adnt-' prefix)
+        tool: String,
+    },
+
     /// Configure ADNT settings
     Config {
         #[command(subcommand)]
@@ -221,6 +227,9 @@ async fn main() -> Result<()> {
         }
         Commands::Run { tool, args } => {
             manager.run_tool(&tool, None, args, cli.force).await?;
+        }
+        Commands::Rm { tool } => {
+            manager.remove_tool(&tool)?;
         }
         Commands::Config { subcommand } => {
             handle_config_command(subcommand).await?;
