@@ -352,4 +352,77 @@ impl ToolManager {
 
         Ok(())
     }
+
+    #[cfg(test)]
+    fn new_with_paths(tools_dir: PathBuf, state_file: PathBuf) -> Result<Self> {
+        fs::create_dir_all(&tools_dir).context("Failed to create tools directory")?;
+
+        let state = if state_file.exists() {
+            let content = fs::read_to_string(&state_file)?;
+            serde_json::from_str(&content).unwrap_or_default()
+        } else {
+            ToolsState::default()
+        };
+
+        Ok(Self {
+            tools_dir,
+            state_file,
+            state,
+            github_client: GitHubClient::new(),
+        })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs;
+    use tempfile::tempdir;
+
+    #[test]
+    fn test_remove_tool_not_installed() {
+        let temp_dir = tempdir().unwrap();
+        let tools_dir = temp_dir.path().join("tools");
+        let state_file = temp_dir.path().join("state.json");
+
+        let mut manager = ToolManager::new_with_paths(tools_dir, state_file).unwrap();
+        
+        // Should succeed without error when tool doesn't exist
+        let result = manager.remove_tool("nonexistent");
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_remove_tool_installed() {
+        let temp_dir = tempdir().unwrap();
+        let tools_dir = temp_dir.path().join("tools");
+        let state_file = temp_dir.path().join("state.json");
+
+        let mut manager = ToolManager::new_with_paths(tools_dir.clone(), state_file).unwrap();
+
+        // Create a fake tool directory
+        let tool_dir = tools_dir.join("adnt-test-app");
+        fs::create_dir_all(&tool_dir).unwrap();
+        fs::write(tool_dir.join("dummy.txt"), "test content").unwrap();
+
+        // Add tool to state
+        manager.state.tools.insert(
+            "adnt-test-app".to_string(),
+            ToolInfo {
+                repo_url: "https://github.com/test/repo".to_string(),
+                last_commit: "abc123".to_string(),
+                installed_at: "2024-01-01T00:00:00Z".to_string(),
+            },
+        );
+
+        // Remove the tool
+        let result = manager.remove_tool("test-app");
+        assert!(result.is_ok());
+
+        // Verify directory is removed
+        assert!(!tool_dir.exists());
+
+        // Verify state is updated
+        assert!(!manager.state.tools.contains_key("adnt-test-app"));
+    }
 }
