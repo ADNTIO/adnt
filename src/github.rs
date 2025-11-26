@@ -1,3 +1,19 @@
+// ADNT - Dynamic CLI tool manager for ADNT projects
+// Copyright (C) 2025 ADNT Sàrl <info@adnt.io>
+//
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+//
+// You should have received a copy of the GNU General Public License
+// along with this program.  If not, see <https://www.gnu.org/licenses/>.
+
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use std::env;
@@ -86,7 +102,7 @@ impl GitHubClient {
 
         // Priority 3: Try gh CLI token
         if let Ok(output) = std::process::Command::new("gh")
-            .args(&["auth", "token"])
+            .args(["auth", "token"])
             .output()
         {
             if output.status.success() {
@@ -110,11 +126,14 @@ impl GitHubClient {
 
     /// Check token scopes and permissions
     pub async fn verify_token(&self) -> Result<TokenInfo> {
-        let token = self.token.as_ref()
+        let token = self
+            .token
+            .as_ref()
             .ok_or_else(|| anyhow::anyhow!("No token configured"))?;
 
-        let response = self.client
-            .get(&format!("{}/user", GITHUB_API_BASE))
+        let response = self
+            .client
+            .get(format!("{}/user", GITHUB_API_BASE))
             .header("Authorization", format!("Bearer {}", token))
             .send()
             .await?;
@@ -155,13 +174,17 @@ impl GitHubClient {
         use colored::Colorize;
 
         let client = reqwest::Client::new();
-        let client_id = env::var("ADNT_GITHUB_CLIENT_ID").unwrap_or_else(|_| DEFAULT_CLIENT_ID.to_string());
+        let client_id =
+            env::var("ADNT_GITHUB_CLIENT_ID").unwrap_or_else(|_| DEFAULT_CLIENT_ID.to_string());
 
         // Step 1: Request device code
         let device_response: DeviceCodeResponse = client
             .post(GITHUB_DEVICE_CODE_URL)
             .header("Accept", "application/json")
-            .form(&[("client_id", client_id.as_str()), ("scope", "repo read:org")])
+            .form(&[
+                ("client_id", client_id.as_str()),
+                ("scope", "repo read:org"),
+            ])
             .send()
             .await?
             .json()
@@ -177,7 +200,7 @@ impl GitHubClient {
         println!("\n{}", "Waiting for authentication...".dimmed());
 
         // Try to open browser automatically
-        if let Err(_) = open::that(&device_response.verification_uri) {
+        if open::that(&device_response.verification_uri).is_err() {
             println!("{}", "  (Could not open browser automatically)".dimmed());
         }
 
@@ -308,6 +331,9 @@ impl GitHubClient {
             .into_iter()
             .find(|repo| repo.name == full_name)
             .map(|repo| repo.clone_url)
-            .context(format!("Tool '{}' not found in ADNTIO repositories", full_name))
+            .context(format!(
+                "Tool '{}' not found in ADNTIO repositories",
+                full_name
+            ))
     }
 }
