@@ -1,12 +1,12 @@
-use clap::{Parser, Subcommand};
 use anyhow::Result;
+use clap::{Parser, Subcommand};
 use colored::Colorize;
 
-mod tool_manager;
 mod github;
+mod tool_manager;
 
-use tool_manager::ToolManager;
 use github::GitHubClient;
+use tool_manager::ToolManager;
 
 #[derive(Parser)]
 #[command(name = "adnt")]
@@ -35,7 +35,11 @@ enum Commands {
         tool: String,
 
         /// Arguments to pass to the tool
-        #[arg(trailing_var_arg = true, allow_hyphen_values = true, value_name = "ARGS")]
+        #[arg(
+            trailing_var_arg = true,
+            allow_hyphen_values = true,
+            value_name = "ARGS"
+        )]
         args: Vec<String>,
     },
 
@@ -73,11 +77,26 @@ async fn handle_config_command(subcommand: ConfigCommands) -> Result<()> {
 
             // Warn if using default client ID
             if env::var("ADNT_GITHUB_CLIENT_ID").is_err() {
-                println!("{}", "⚠ Warning: Using default GitHub CLI OAuth client".yellow());
-                println!("{}", "  This may not grant access to private repositories.".yellow());
-                println!("\n{}", "For private repo access, create a custom OAuth App:".dimmed());
-                println!("{}", "  See QUICK_FIX.md or OAUTH_SETUP.md for instructions".dimmed());
-                println!("{}", "  Or set ADNT_GITHUB_CLIENT_ID environment variable".dimmed());
+                println!(
+                    "{}",
+                    "⚠ Warning: Using default GitHub CLI OAuth client".yellow()
+                );
+                println!(
+                    "{}",
+                    "  This may not grant access to private repositories.".yellow()
+                );
+                println!(
+                    "\n{}",
+                    "For private repo access, create a custom OAuth App:".dimmed()
+                );
+                println!(
+                    "{}",
+                    "  See QUICK_FIX.md or OAUTH_SETUP.md for instructions".dimmed()
+                );
+                println!(
+                    "{}",
+                    "  Or set ADNT_GITHUB_CLIENT_ID environment variable".dimmed()
+                );
                 println!();
             }
 
@@ -85,7 +104,10 @@ async fn handle_config_command(subcommand: ConfigCommands) -> Result<()> {
             let token = GitHubClient::device_flow_login().await?;
             GitHubClient::save_token(&token)?;
             println!("{}", "✓ Token saved successfully".green());
-            println!("{}", format!("  Config file: ~/.config/adnt/config.json").dimmed());
+            println!(
+                "{}",
+                format!("  Config file: ~/.config/adnt/config.json").dimmed()
+            );
 
             // Verify token scopes immediately
             println!("\n{}", "Verifying token scopes...".dimmed());
@@ -94,10 +116,24 @@ async fn handle_config_command(subcommand: ConfigCommands) -> Result<()> {
                 Ok(info) => {
                     if let Some(scopes) = info.scopes {
                         if scopes.is_empty() {
-                            println!("{}", "✗ Token has no scopes - private repos won't be accessible!".red());
-                            println!("\n{}", "To fix this, you must create a custom OAuth App:".yellow().bold());
-                            println!("{}", "  1. See QUICK_FIX.md for step-by-step guide".yellow());
-                            println!("{}", "  2. Or create manual token: adnt config set-token".yellow());
+                            println!(
+                                "{}",
+                                "✗ Token has no scopes - private repos won't be accessible!".red()
+                            );
+                            println!(
+                                "\n{}",
+                                "To fix this, you must create a custom OAuth App:"
+                                    .yellow()
+                                    .bold()
+                            );
+                            println!(
+                                "{}",
+                                "  1. See QUICK_FIX.md for step-by-step guide".yellow()
+                            );
+                            println!(
+                                "{}",
+                                "  2. Or create manual token: adnt config set-token".yellow()
+                            );
                         } else {
                             println!("{}", format!("✓ Token scopes: {}", scopes).green());
                         }
@@ -129,7 +165,10 @@ async fn handle_config_command(subcommand: ConfigCommands) -> Result<()> {
 
             GitHubClient::save_token(&token)?;
             println!("{}", "✓ GitHub token saved successfully".green());
-            println!("{}", format!("  Config file: ~/.config/adnt/config.json").dimmed());
+            println!(
+                "{}",
+                format!("  Config file: ~/.config/adnt/config.json").dimmed()
+            );
         }
         ConfigCommands::Status => {
             let client = GitHubClient::new();
@@ -142,13 +181,25 @@ async fn handle_config_command(subcommand: ConfigCommands) -> Result<()> {
 
                 // Try to determine source
                 if std::env::var("GITHUB_TOKEN").is_ok() {
-                    println!("{} {}", "  Source:".dimmed(), "Environment variable (GITHUB_TOKEN)".dimmed());
+                    println!(
+                        "{} {}",
+                        "  Source:".dimmed(),
+                        "Environment variable (GITHUB_TOKEN)".dimmed()
+                    );
                 } else if let Some(home) = dirs::home_dir() {
                     let config_path = home.join(".config/adnt/config.json");
                     if config_path.exists() {
-                        println!("{} {}", "  Source:".dimmed(), "Config file (~/.config/adnt/config.json)".dimmed());
+                        println!(
+                            "{} {}",
+                            "  Source:".dimmed(),
+                            "Config file (~/.config/adnt/config.json)".dimmed()
+                        );
                     }
-                } else if std::process::Command::new("gh").args(&["auth", "status"]).output().is_ok() {
+                } else if std::process::Command::new("gh")
+                    .args(&["auth", "status"])
+                    .output()
+                    .is_ok()
+                {
                     println!("{} {}", "  Source:".dimmed(), "GitHub CLI (gh)".dimmed());
                 }
 
@@ -167,11 +218,17 @@ async fn handle_config_command(subcommand: ConfigCommands) -> Result<()> {
                             }
 
                             // Check for required scopes
-                            let has_repo = scopes.contains("repo") || scopes.contains("public_repo");
+                            let has_repo =
+                                scopes.contains("repo") || scopes.contains("public_repo");
                             let has_org = scopes.contains("read:org");
 
                             if scopes.is_empty() {
-                                println!("\n{}", "✗ Token has NO scopes - it cannot access any repositories!".red().bold());
+                                println!(
+                                    "\n{}",
+                                    "✗ Token has NO scopes - it cannot access any repositories!"
+                                        .red()
+                                        .bold()
+                                );
                             } else {
                                 if !has_repo {
                                     println!("\n{}", "⚠ Warning: Missing 'repo' scope - private repositories not accessible".yellow());
@@ -183,31 +240,63 @@ async fn handle_config_command(subcommand: ConfigCommands) -> Result<()> {
 
                             if !has_repo || !has_org {
                                 println!("\n{}", "To access private repositories, authenticate with correct scopes:".bold());
-                                println!("{}", "  Option 1 (Recommended): adnt config login".green());
+                                println!(
+                                    "{}",
+                                    "  Option 1 (Recommended): adnt config login".green()
+                                );
                                 println!("{}", "  Option 2: Create token manually:".dimmed());
-                                println!("{}", "    - Go to https://github.com/settings/tokens".dimmed());
-                                println!("{}", "    - Generate token with 'repo' and 'read:org' scopes".dimmed());
+                                println!(
+                                    "{}",
+                                    "    - Go to https://github.com/settings/tokens".dimmed()
+                                );
+                                println!(
+                                    "{}",
+                                    "    - Generate token with 'repo' and 'read:org' scopes"
+                                        .dimmed()
+                                );
                                 println!("{}", "    - Run: adnt config set-token".dimmed());
-                                println!("\n{}", "For custom OAuth app (better for orgs):".dimmed());
+                                println!(
+                                    "\n{}",
+                                    "For custom OAuth app (better for orgs):".dimmed()
+                                );
                                 println!("{}", "  See OAUTH_SETUP.md for instructions".dimmed());
                             }
                         } else {
-                            println!("{}", "  Scopes: Unknown (classic token or legacy format)".dimmed());
+                            println!(
+                                "{}",
+                                "  Scopes: Unknown (classic token or legacy format)".dimmed()
+                            );
                         }
                     }
                     Err(e) => {
-                        println!("{} {}", "  Verification failed:".red(), e.to_string().dimmed());
+                        println!(
+                            "{} {}",
+                            "  Verification failed:".red(),
+                            e.to_string().dimmed()
+                        );
                     }
                 }
             } else {
                 println!("{} {}", "GitHub Token:".bold(), "✗ Not configured".yellow());
                 println!("\n{}", "You can authenticate using:".dimmed());
-                println!("{}", "  adnt config login           (recommended - interactive OAuth)".dimmed());
-                println!("{}", "  adnt config set-token       (manual token entry)".dimmed());
+                println!(
+                    "{}",
+                    "  adnt config login           (recommended - interactive OAuth)".dimmed()
+                );
+                println!(
+                    "{}",
+                    "  adnt config set-token       (manual token entry)".dimmed()
+                );
                 println!("\n{}", "Or use one of these methods:".dimmed());
                 println!("{}", "  1. Set GITHUB_TOKEN environment variable".dimmed());
-                println!("{}", "  2. Authenticate with GitHub CLI: gh auth login".dimmed());
-                println!("\n{}", "Note: A token is not required for public repositories.".yellow());
+                println!(
+                    "{}",
+                    "  2. Authenticate with GitHub CLI: gh auth login".dimmed()
+                );
+                println!(
+                    "\n{}",
+                    "Note: A token is not required for public repositories.".yellow()
+                );
             }
         }
     }

@@ -68,7 +68,10 @@ impl ToolManager {
         let in_state = self.state.tools.contains_key(&full_tool_name);
 
         if !dir_exists && !in_state {
-            println!("{}", format!("Tool '{}' is not installed.", full_tool_name).yellow());
+            println!(
+                "{}",
+                format!("Tool '{}' is not installed.", full_tool_name).yellow()
+            );
             return Ok(());
         }
 
@@ -82,7 +85,10 @@ impl ToolManager {
             self.save_state()?;
         }
 
-        println!("{}", format!("✓ Removed '{}' from cache.", full_tool_name).green());
+        println!(
+            "{}",
+            format!("✓ Removed '{}' from cache.", full_tool_name).green()
+        );
 
         Ok(())
     }
@@ -92,7 +98,10 @@ impl ToolManager {
         if let Some(token) = self.github_client.get_token() {
             // Convert https://github.com/... to https://oauth2:TOKEN@github.com/...
             if repo_url.starts_with("https://github.com/") {
-                return repo_url.replace("https://github.com/", &format!("https://oauth2:{}@github.com/", token));
+                return repo_url.replace(
+                    "https://github.com/",
+                    &format!("https://oauth2:{}@github.com/", token),
+                );
             }
         }
         // Return original URL if no token or not a GitHub HTTPS URL
@@ -118,7 +127,10 @@ impl ToolManager {
             .await?;
 
         let stdout = String::from_utf8(output.stdout)?;
-        let commit = stdout.split_whitespace().next().context("No commit found")?;
+        let commit = stdout
+            .split_whitespace()
+            .next()
+            .context("No commit found")?;
         Ok(commit.to_string())
     }
 
@@ -134,7 +146,10 @@ impl ToolManager {
             .await?;
 
         if !output.status.success() {
-            anyhow::bail!("Failed to clone repository: {}", String::from_utf8_lossy(&output.stderr));
+            anyhow::bail!(
+                "Failed to clone repository: {}",
+                String::from_utf8_lossy(&output.stderr)
+            );
         }
 
         Ok(())
@@ -145,7 +160,13 @@ impl ToolManager {
         if self.github_client.has_token() {
             // Get current remote URL
             let output = Command::new("git")
-                .args(&["-C", repo_path.to_str().unwrap(), "remote", "get-url", "origin"])
+                .args(&[
+                    "-C",
+                    repo_path.to_str().unwrap(),
+                    "remote",
+                    "get-url",
+                    "origin",
+                ])
                 .output()
                 .await?;
 
@@ -155,7 +176,14 @@ impl ToolManager {
 
                 // Update remote URL with authentication
                 Command::new("git")
-                    .args(&["-C", repo_path.to_str().unwrap(), "remote", "set-url", "origin", &auth_url])
+                    .args(&[
+                        "-C",
+                        repo_path.to_str().unwrap(),
+                        "remote",
+                        "set-url",
+                        "origin",
+                        &auth_url,
+                    ])
                     .output()
                     .await?;
             }
@@ -169,7 +197,10 @@ impl ToolManager {
             .await?;
 
         if !output.status.success() {
-            anyhow::bail!("Failed to update repository: {}", String::from_utf8_lossy(&output.stderr));
+            anyhow::bail!(
+                "Failed to update repository: {}",
+                String::from_utf8_lossy(&output.stderr)
+            );
         }
 
         Ok(())
@@ -185,19 +216,24 @@ impl ToolManager {
             .await?;
 
         if !output.status.success() {
-            anyhow::bail!("Failed to build tool: {}", String::from_utf8_lossy(&output.stderr));
+            anyhow::bail!(
+                "Failed to build tool: {}",
+                String::from_utf8_lossy(&output.stderr)
+            );
         }
 
         Ok(())
     }
 
-    async fn run_binary(&self, repo_path: &PathBuf, tool_name: &str, args: Vec<String>) -> Result<()> {
+    async fn run_binary(
+        &self,
+        repo_path: &PathBuf,
+        tool_name: &str,
+        args: Vec<String>,
+    ) -> Result<()> {
         let binary_path = repo_path.join("target/release").join(tool_name);
 
-        let status = Command::new(binary_path)
-            .args(&args)
-            .status()
-            .await?;
+        let status = Command::new(binary_path).args(&args).status().await?;
 
         if !status.success() {
             anyhow::bail!("Tool execution failed");
@@ -223,7 +259,10 @@ impl ToolManager {
                 };
                 println!("  {} {}", repo.name.cyan(), is_adnt);
             }
-            println!("\n{}", format!("Total repositories: {}", all_repos.len()).dimmed());
+            println!(
+                "\n{}",
+                format!("Total repositories: {}", all_repos.len()).dimmed()
+            );
             println!("{}", format!("ADNT tools found: {}", tools.len()).dimmed());
         }
 
@@ -259,7 +298,13 @@ impl ToolManager {
         Ok(())
     }
 
-    pub async fn run_tool(&mut self, tool_name: &str, repo_url: Option<&str>, args: Vec<String>, force_update: bool) -> Result<()> {
+    pub async fn run_tool(
+        &mut self,
+        tool_name: &str,
+        repo_url: Option<&str>,
+        args: Vec<String>,
+        force_update: bool,
+    ) -> Result<()> {
         let tool_path = self.tools_dir.join(format!("adnt-{}", tool_name));
         let full_tool_name = format!("adnt-{}", tool_name);
 
@@ -271,14 +316,17 @@ impl ToolManager {
         };
 
         if !tool_path.exists() {
-            println!("{}", format!("Tool '{}' not found. Installing...", full_tool_name).yellow());
+            println!(
+                "{}",
+                format!("Tool '{}' not found. Installing...", full_tool_name).yellow()
+            );
 
             let start = Instant::now();
             let pb = ProgressBar::new_spinner();
             pb.set_style(
                 ProgressStyle::default_spinner()
                     .template("{spinner:.green} {msg}")
-                    .unwrap()
+                    .unwrap(),
             );
 
             pb.set_message("Cloning repository...");
@@ -311,7 +359,7 @@ impl ToolManager {
             pb.set_style(
                 ProgressStyle::default_spinner()
                     .template("{spinner:.cyan} {msg}")
-                    .unwrap()
+                    .unwrap(),
             );
             pb.set_message("Checking for updates...");
 
@@ -394,7 +442,7 @@ mod tests {
         let state_file = temp_dir.path().join("state.json");
 
         let mut manager = ToolManager::new_with_paths(tools_dir, state_file).unwrap();
-        
+
         // Should succeed without error when tool doesn't exist
         let result = manager.remove_tool("nonexistent");
         assert!(result.is_ok());
@@ -406,7 +454,8 @@ mod tests {
         let tools_dir = temp_dir.path().join("tools");
         let state_file = temp_dir.path().join("state.json");
 
-        let mut manager = ToolManager::new_with_paths(tools_dir.clone(), state_file.clone()).unwrap();
+        let mut manager =
+            ToolManager::new_with_paths(tools_dir.clone(), state_file.clone()).unwrap();
 
         // Create a fake tool directory
         let tool_dir = tools_dir.join("adnt-test-app");

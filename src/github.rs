@@ -110,10 +110,13 @@ impl GitHubClient {
 
     /// Check token scopes and permissions
     pub async fn verify_token(&self) -> Result<TokenInfo> {
-        let token = self.token.as_ref()
+        let token = self
+            .token
+            .as_ref()
             .ok_or_else(|| anyhow::anyhow!("No token configured"))?;
 
-        let response = self.client
+        let response = self
+            .client
             .get(&format!("{}/user", GITHUB_API_BASE))
             .header("Authorization", format!("Bearer {}", token))
             .send()
@@ -155,13 +158,17 @@ impl GitHubClient {
         use colored::Colorize;
 
         let client = reqwest::Client::new();
-        let client_id = env::var("ADNT_GITHUB_CLIENT_ID").unwrap_or_else(|_| DEFAULT_CLIENT_ID.to_string());
+        let client_id =
+            env::var("ADNT_GITHUB_CLIENT_ID").unwrap_or_else(|_| DEFAULT_CLIENT_ID.to_string());
 
         // Step 1: Request device code
         let device_response: DeviceCodeResponse = client
             .post(GITHUB_DEVICE_CODE_URL)
             .header("Accept", "application/json")
-            .form(&[("client_id", client_id.as_str()), ("scope", "repo read:org")])
+            .form(&[
+                ("client_id", client_id.as_str()),
+                ("scope", "repo read:org"),
+            ])
             .send()
             .await?
             .json()
@@ -308,6 +315,9 @@ impl GitHubClient {
             .into_iter()
             .find(|repo| repo.name == full_name)
             .map(|repo| repo.clone_url)
-            .context(format!("Tool '{}' not found in ADNTIO repositories", full_name))
+            .context(format!(
+                "Tool '{}' not found in ADNTIO repositories",
+                full_name
+            ))
     }
 }
