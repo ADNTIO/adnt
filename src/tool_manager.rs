@@ -64,16 +64,23 @@ impl ToolManager {
         let full_tool_name = format!("adnt-{}", tool_name);
         let tool_path = self.tools_dir.join(&full_tool_name);
 
-        if !tool_path.exists() {
+        let dir_exists = tool_path.exists();
+        let in_state = self.state.tools.contains_key(&full_tool_name);
+
+        if !dir_exists && !in_state {
             println!("{}", format!("Tool '{}' is not installed.", full_tool_name).yellow());
             return Ok(());
         }
 
-        fs::remove_dir_all(&tool_path)
-            .context(format!("Failed to remove tool directory: {:?}", tool_path))?;
+        if dir_exists {
+            fs::remove_dir_all(&tool_path)
+                .context(format!("Failed to remove tool directory: {:?}", tool_path))?;
+        }
 
-        self.state.tools.remove(&full_tool_name);
-        self.save_state()?;
+        if in_state {
+            self.state.tools.remove(&full_tool_name);
+            self.save_state()?;
+        }
 
         println!("{}", format!("✓ Removed '{}' from cache.", full_tool_name).green());
 
@@ -424,5 +431,31 @@ mod tests {
 
         // Verify state is updated
         assert!(!manager.state.tools.contains_key("adnt-test-app"));
+    }
+
+    #[test]
+    fn test_remove_tool_in_state_but_no_directory() {
+        let temp_dir = tempdir().unwrap();
+        let tools_dir = temp_dir.path().join("tools");
+        let state_file = temp_dir.path().join("state.json");
+
+        let mut manager = ToolManager::new_with_paths(tools_dir, state_file).unwrap();
+
+        // Add tool to state but don't create directory
+        manager.state.tools.insert(
+            "adnt-orphan-app".to_string(),
+            ToolInfo {
+                repo_url: "https://github.com/test/repo".to_string(),
+                last_commit: "abc123".to_string(),
+                installed_at: "2024-01-01T00:00:00Z".to_string(),
+            },
+        );
+
+        // Remove the tool - should clean up state even without directory
+        let result = manager.remove_tool("orphan-app");
+        assert!(result.is_ok());
+
+        // Verify state is updated
+        assert!(!manager.state.tools.contains_key("adnt-orphan-app"));
     }
 }
