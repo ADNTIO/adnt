@@ -418,6 +418,123 @@ impl ToolManager {
         Ok(())
     }
 
+    /// Update adnt itself to the latest version from GitHub
+    pub async fn self_update(&self) -> Result<()> {
+        const ADNT_REPO_URL: &str = "https://github.com/ADNTIO/adnt";
+
+        println!(
+            "{}",
+            "Checking for adnt updates...".cyan()
+        );
+
+        // Get the authenticated URL for remote operations
+        let remote_url = self.get_authenticated_url(ADNT_REPO_URL);
+
+        // Fetch and get the default branch reference
+        let default_branch_output = Command::new("git")
+            .args(["ls-remote", "--symref", &remote_url, "HEAD"])
+            .output()
+            .await
+            .context("Failed to query remote repository")?;
+
+        if !default_branch_output.status.success() {
+            anyhow::bail!(
+                "Failed to query remote repository: {}",
+                String::from_utf8_lossy(&default_branch_output.stderr)
+            );
+        }
+
+        let ls_remote_output = String::from_utf8_lossy(&default_branch_output.stdout);
+
+        // Parse output to get the latest commit hash
+        // Format: "ref: refs/heads/main\tHEAD\n<commit_hash>\tHEAD\n"
+        let remote_commit = ls_remote_output
+            .lines()
+            .find(|line| !line.starts_with("ref:") && line.ends_with("HEAD"))
+            .and_then(|line| line.split_whitespace().next())
+            .context("Failed to parse remote commit hash")?
+            .to_string();
+
+        // Get the current local commit hash by querying the installed version
+        // We'll use `cargo install --list` to find the installed version, or check if we can get
+        // the commit from our own binary's build info
+        let local_commit = self.get_local_adnt_commit().await?;
+
+        if local_commit == remote_commit {
+            println!(
+                "{}",
+                format!("✓ adnt is already up to date ({})", &remote_commit[..7]).green()
+            );
+            return Ok(());
+        }
+
+        println!(
+            "{}",
+            format!(
+                "Update available: {} → {}",
+                &local_commit[..7.min(local_commit.len())],
+                &remote_commit[..7]
+            )
+            .yellow()
+        );
+
+        println!("{}", "Updating adnt...".cyan());
+
+        // Update using cargo install --git
+        let install_output = Command::new("cargo")
+            .args(["install", "--git", ADNT_REPO_URL, "--force"])
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .output()
+            .await
+            .context("Failed to run cargo install")?;
+
+        if !install_output.status.success() {
+            anyhow::bail!(
+                "Failed to update adnt: {}",
+                String::from_utf8_lossy(&install_output.stderr)
+            );
+        }
+
+        println!(
+            "{}",
+            format!("Updated to {}", &remote_commit[..7]).green()
+        );
+
+        Ok(())
+    }
+
+    /// Get the commit hash of the currently installed adnt
+    async fn get_local_adnt_commit(&self) -> Result<String> {
+        // Try to get commit from cargo install --list
+        let list_output = Command::new("cargo")
+            .args(["install", "--list"])
+            .output()
+            .await
+            .context("Failed to run cargo install --list")?;
+
+        if list_output.status.success() {
+            let list_str = String::from_utf8_lossy(&list_output.stdout);
+            // Look for adnt entry, format is typically:
+            // adnt v0.1.0 (https://github.com/ADNTIO/adnt#<commit>):
+            for line in list_str.lines() {
+                if line.starts_with("adnt ") && line.contains("ADNTIO/adnt#") {
+                    // Extract commit hash after the # and before the ):
+                    if let Some(hash_start) = line.find("ADNTIO/adnt#") {
+                        let after_hash = &line[hash_start + 12..]; // Skip "ADNTIO/adnt#"
+                        if let Some(end) = after_hash.find(')') {
+                            return Ok(after_hash[..end].to_string());
+                        }
+                    }
+                }
+            }
+        }
+
+        // If we can't determine the local commit, return a placeholder that will trigger an update
+        // This handles the case where adnt was installed from a local path or other source
+        Ok("unknown".to_string())
+    }
+
     #[cfg(test)]
     /// Creates a new ToolManager with custom paths for testing purposes.
     /// This bypasses the default home directory paths to allow isolated testing.
