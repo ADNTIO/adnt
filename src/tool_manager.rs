@@ -460,10 +460,26 @@ impl ToolManager {
         // the commit from our own binary's build info
         let local_commit = self.get_local_adnt_commit().await?;
 
-        if local_commit == remote_commit {
+        // Helper function to safely truncate commit hash for display
+        fn short_hash(hash: &str) -> &str {
+            let len = 7.min(hash.len());
+            &hash[..len]
+        }
+
+        // Compare commits by checking if one is a prefix of the other
+        // This handles the case where cargo install --list returns a short hash (8 chars)
+        // while git ls-remote returns the full 40-character hash
+        let is_same_commit = if local_commit == "unknown" {
+            false
+        } else {
+            let min_len = local_commit.len().min(remote_commit.len());
+            local_commit[..min_len] == remote_commit[..min_len]
+        };
+
+        if is_same_commit {
             println!(
                 "{}",
-                format!("✓ adnt is already up to date ({})", &remote_commit[..7]).green()
+                format!("✓ adnt is already up to date ({})", short_hash(&remote_commit)).green()
             );
             return Ok(());
         }
@@ -472,8 +488,8 @@ impl ToolManager {
             "{}",
             format!(
                 "Update available: {} → {}",
-                &local_commit[..7.min(local_commit.len())],
-                &remote_commit[..7]
+                short_hash(&local_commit),
+                short_hash(&remote_commit)
             )
             .yellow()
         );
@@ -498,7 +514,7 @@ impl ToolManager {
 
         println!(
             "{}",
-            format!("Updated to {}", &remote_commit[..7]).green()
+            format!("Updated to {}", short_hash(&remote_commit)).green()
         );
 
         Ok(())
@@ -506,6 +522,8 @@ impl ToolManager {
 
     /// Get the commit hash of the currently installed adnt
     async fn get_local_adnt_commit(&self) -> Result<String> {
+        const MARKER: &str = "ADNTIO/adnt#";
+
         // Try to get commit from cargo install --list
         let list_output = Command::new("cargo")
             .args(["install", "--list"])
@@ -518,10 +536,10 @@ impl ToolManager {
             // Look for adnt entry, format is typically:
             // adnt v0.1.0 (https://github.com/ADNTIO/adnt#<commit>):
             for line in list_str.lines() {
-                if line.starts_with("adnt ") && line.contains("ADNTIO/adnt#") {
+                if line.starts_with("adnt ") && line.contains(MARKER) {
                     // Extract commit hash after the # and before the ):
-                    if let Some(hash_start) = line.find("ADNTIO/adnt#") {
-                        let after_hash = &line[hash_start + 12..]; // Skip "ADNTIO/adnt#"
+                    if let Some(hash_start) = line.find(MARKER) {
+                        let after_hash = &line[hash_start + MARKER.len()..];
                         if let Some(end) = after_hash.find(')') {
                             return Ok(after_hash[..end].to_string());
                         }
