@@ -422,10 +422,7 @@ impl ToolManager {
     pub async fn self_update(&self) -> Result<()> {
         const ADNT_REPO_URL: &str = "https://github.com/ADNTIO/adnt";
 
-        println!(
-            "{}",
-            "Checking for adnt updates...".cyan()
-        );
+        println!("{}", "Checking for adnt updates...".cyan());
 
         // Get the authenticated URL for remote operations
         let remote_url = self.get_authenticated_url(ADNT_REPO_URL);
@@ -479,7 +476,11 @@ impl ToolManager {
         if is_same_commit {
             println!(
                 "{}",
-                format!("✓ adnt is already up to date ({})", short_hash(&remote_commit)).green()
+                format!(
+                    "✓ adnt is already up to date ({})",
+                    short_hash(&remote_commit)
+                )
+                .green()
             );
             return Ok(());
         }
