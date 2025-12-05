@@ -130,19 +130,18 @@ pub fn get_required_rust_version(tool_path: &Path) -> Result<Option<Version>> {
     let content = fs::read_to_string(&cargo_toml_path)
         .context(format!("Failed to read {:?}", cargo_toml_path))?;
 
-    // Parse the Cargo.toml to find rust-version
-    // We look for: rust-version = "1.70" or rust-version = "1.70.0"
-    for line in content.lines() {
-        let line = line.trim();
-        if line.starts_with("rust-version") {
-            // Extract the version from the line
-            if let Some(eq_pos) = line.find('=') {
-                let version_part = line[eq_pos + 1..].trim();
-                // Remove quotes
-                let version_str = version_part.trim_matches('"').trim_matches('\'');
-                return Ok(Some(Version::parse(version_str)?));
-            }
-        }
+    // Parse Cargo.toml using the toml crate
+    let toml_table: toml::Table = content
+        .parse()
+        .context(format!("Failed to parse {:?} as TOML", cargo_toml_path))?;
+
+    // Look for package.rust-version field
+    if let Some(rust_version) = toml_table
+        .get("package")
+        .and_then(|p| p.get("rust-version"))
+        .and_then(|v| v.as_str())
+    {
+        return Ok(Some(Version::parse(rust_version)?));
     }
 
     Ok(None)
@@ -302,12 +301,7 @@ mod tests {
 
         fs::write(
             &cargo_toml,
-            r#"[package]
-name = "test-tool"
-version = "0.1.0"
-edition = "2021"
-rust-version = "1.70.0"
-"#,
+            "[package]\nname = \"test-tool\"\nversion = \"0.1.0\"\nedition = \"2021\"\nrust-version = \"1.70.0\"\n",
         )
         .unwrap();
 
@@ -326,11 +320,7 @@ rust-version = "1.70.0"
 
         fs::write(
             &cargo_toml,
-            r#"[package]
-name = "test-tool"
-version = "0.1.0"
-edition = "2021"
-"#,
+            "[package]\nname = \"test-tool\"\nversion = \"0.1.0\"\nedition = \"2021\"\n",
         )
         .unwrap();
 
@@ -352,11 +342,7 @@ edition = "2021"
 
         fs::write(
             &cargo_toml,
-            r#"[package]
-name = "test-tool"
-version = "0.1.0"
-rust-version = "1.75"
-"#,
+            "[package]\nname = \"test-tool\"\nversion = \"0.1.0\"\nrust-version = \"1.75\"\n",
         )
         .unwrap();
 

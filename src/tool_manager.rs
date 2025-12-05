@@ -242,6 +242,19 @@ impl ToolManager {
         Ok(())
     }
 
+    /// Create a spinner progress bar with the specified color and message
+    fn create_spinner(&self, color: &str, message: &str) -> ProgressBar {
+        let pb = ProgressBar::new_spinner();
+        let template = match color {
+            "green" => "{spinner:.green} {msg}",
+            "cyan" => "{spinner:.cyan} {msg}",
+            _ => "{spinner} {msg}",
+        };
+        pb.set_style(ProgressStyle::default_spinner().template(template).unwrap());
+        pb.set_message(message.to_string());
+        pb
+    }
+
     async fn run_binary(&self, repo_path: &Path, tool_name: &str, args: Vec<String>) -> Result<()> {
         let binary_path = repo_path.join("target/release").join(tool_name);
 
@@ -334,27 +347,14 @@ impl ToolManager {
             );
 
             let start = Instant::now();
-            let pb = ProgressBar::new_spinner();
-            pb.set_style(
-                ProgressStyle::default_spinner()
-                    .template("{spinner:.green} {msg}")
-                    .unwrap(),
-            );
-
-            pb.set_message("Cloning repository...");
+            let pb = self.create_spinner("green", "Cloning repository...");
             self.clone_repo(&repo_url, &tool_path).await?;
 
             // Check Rust version requirements before building
             pb.finish_and_clear();
             rust_version::check_rust_version(&tool_path, &full_tool_name)?;
 
-            let pb = ProgressBar::new_spinner();
-            pb.set_style(
-                ProgressStyle::default_spinner()
-                    .template("{spinner:.green} {msg}")
-                    .unwrap(),
-            );
-            pb.set_message("Building tool...");
+            let pb = self.create_spinner("green", "Building tool...");
             self.build_tool(&tool_path).await?;
 
             let commit = self.get_latest_commit(&tool_path).await?;
@@ -378,13 +378,7 @@ impl ToolManager {
         } else {
             // Check for updates
             if force_update {
-                let pb: ProgressBar = ProgressBar::new_spinner();
-                pb.set_style(
-                    ProgressStyle::default_spinner()
-                        .template("{spinner:.cyan} {msg}")
-                        .unwrap(),
-                );
-                pb.set_message("Checking for updates...");
+                let pb = self.create_spinner("cyan", "Checking for updates...");
 
                 let local_commit = self.get_latest_commit(&tool_path).await?;
                 let remote_commit = self.get_remote_commit(&repo_url).await?;
@@ -403,13 +397,7 @@ impl ToolManager {
                     pb.finish_and_clear();
                     rust_version::check_rust_version(&tool_path, &full_tool_name)?;
 
-                    let pb = ProgressBar::new_spinner();
-                    pb.set_style(
-                        ProgressStyle::default_spinner()
-                            .template("{spinner:.cyan} {msg}")
-                            .unwrap(),
-                    );
-                    pb.set_message("Building tool...");
+                    let pb = self.create_spinner("cyan", "Building tool...");
                     self.build_tool(&tool_path).await?;
 
                     self.state.tools.insert(
