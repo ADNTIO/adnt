@@ -9,6 +9,7 @@ A dynamic CLI tools manager written in Rust that automatically discovers, instal
 - **Automatic tool discovery** - Scans ADNTIO GitHub organization for all `adnt-*` repositories
 - **Automatic installation** - Installs tools on first use from GitHub
 - **Version checking** - Automatically checks for updates before running
+- **Rust version validation** - Checks if the installed Rust toolchain meets tool requirements and proposes upgrade if outdated
 - **Self-update** - Update adnt itself with `adnt update`
 - **Force update** - Option to force rebuild even when up to date
 - **Installation time tracking** - Displays time taken for installation/updates
@@ -182,6 +183,8 @@ If you prefer to create a token manually instead of using `adnt config login`:
 **On first execution:**
 - Discovers the tool repository from GitHub
 - Clones the repository to `~/.adnt/tools/adnt-<tool-name>`
+- Checks if the installed Rust version meets the tool's requirements (if `rust-version` is specified in the tool's `Cargo.toml`)
+- If the Rust version is outdated, prompts the user to upgrade via `rustup update`
 - Compiles the tool in release mode
 - Displays installation time
 - Executes the tool with provided arguments
@@ -189,12 +192,32 @@ If you prefer to create a token manually instead of using `adnt config login`:
 **On subsequent executions:**
 - Checks if an update is available (compares git commits)
 - Updates and recompiles if necessary
+- Checks Rust version requirements after update (before recompiling)
 - Displays update time
 - Executes the tool
 
 **With --force flag:**
 - Forces git pull and rebuild even if already up to date
 - Useful for testing or after manual changes
+
+### Rust Version Requirements
+
+ADNT automatically detects and validates Rust toolchain requirements for each tool. If a tool specifies a minimum Rust version in its `Cargo.toml` via the `rust-version` field, ADNT will:
+
+1. Check your installed Rust version using `rustc --version`
+2. Compare it against the tool's requirement
+3. If outdated, display a clear message and prompt you to upgrade
+4. Offer to run `rustup update` automatically
+5. Continue with the build only if the version requirements are met
+
+Example of a tool's `Cargo.toml` with a version requirement:
+```toml
+[package]
+name = "adnt-example"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.70"
+```
 
 ## Structure
 
@@ -203,6 +226,7 @@ adnt/
 ├── src/
 │   ├── main.rs           # CLI entry point and command routing
 │   ├── tool_manager.rs   # Tool installation, update, and execution logic
+│   ├── rust_version.rs   # Rust version checking and validation
 │   └── github.rs         # GitHub API client for repository discovery
 ├── Cargo.toml
 └── README.md

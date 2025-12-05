@@ -19,6 +19,7 @@ use clap::{Parser, Subcommand};
 use colored::Colorize;
 
 mod github;
+mod rust_version;
 mod tool_manager;
 
 use github::GitHubClient;

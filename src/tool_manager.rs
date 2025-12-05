@@ -26,6 +26,7 @@ use std::time::Instant;
 use tokio::process::Command;
 
 use crate::github::GitHubClient;
+use crate::rust_version;
 
 #[derive(Debug, Serialize, Deserialize, Default)]
 struct ToolsState {
@@ -343,6 +344,16 @@ impl ToolManager {
             pb.set_message("Cloning repository...");
             self.clone_repo(&repo_url, &tool_path).await?;
 
+            // Check Rust version requirements before building
+            pb.finish_and_clear();
+            rust_version::check_rust_version(&tool_path, &full_tool_name)?;
+
+            let pb = ProgressBar::new_spinner();
+            pb.set_style(
+                ProgressStyle::default_spinner()
+                    .template("{spinner:.green} {msg}")
+                    .unwrap(),
+            );
             pb.set_message("Building tool...");
             self.build_tool(&tool_path).await?;
 
@@ -387,6 +398,18 @@ impl ToolManager {
                     let start = Instant::now();
 
                     self.update_repo(&tool_path).await?;
+
+                    // Check Rust version requirements after update, before building
+                    pb.finish_and_clear();
+                    rust_version::check_rust_version(&tool_path, &full_tool_name)?;
+
+                    let pb = ProgressBar::new_spinner();
+                    pb.set_style(
+                        ProgressStyle::default_spinner()
+                            .template("{spinner:.cyan} {msg}")
+                            .unwrap(),
+                    );
+                    pb.set_message("Building tool...");
                     self.build_tool(&tool_path).await?;
 
                     self.state.tools.insert(
