@@ -314,7 +314,7 @@ async fn handle_config_command(subcommand: ConfigCommands) -> Result<()> {
     Ok(())
 }
 
-#[tokio::main]
+#[tokio::main(flavor = "current_thread")]
 async fn main() -> Result<()> {
     let cli = Cli::parse();
     let mut manager = ToolManager::new()?;
