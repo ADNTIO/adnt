@@ -54,8 +54,14 @@ jobs:
     - name: Build
       run: cargo build --verbose
 
-    - name: Run tests
-      run: cargo test --verbose
+    - name: Install cargo-llvm-cov
+      uses: taiki-e/install-action@cargo-llvm-cov
+
+    # Runs the whole test suite; the threshold sits just below the current
+    # line coverage (53%) so it can only go up. Network paths (GitHub API,
+    # git clone/build, agent installers) are not covered by unit tests.
+    - name: Run tests with coverage
+      run: cargo llvm-cov --fail-under-lines 50
 
   build-release:
     name: Build Release on Linux
