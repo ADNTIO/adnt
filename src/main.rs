@@ -19,6 +19,7 @@ use clap::{Parser, Subcommand};
 use colored::Colorize;
 
 mod github;
+mod secure_fs;
 mod tool_manager;
 
 use github::GitHubClient;
@@ -28,7 +29,7 @@ use tool_manager::ToolManager;
 #[command(name = "adnt")]
 #[command(about = "ADNT tools manager", long_about = None)]
 struct Cli {
-    /// Force update even if tool is up to date
+    /// Pull the latest version and rebuild a cached tool before running it
     #[arg(short, long, global = true)]
     force: bool,
 
@@ -59,6 +60,7 @@ enum Commands {
         args: Vec<String>,
     },
 
+    /// Remove a cached tool (e.g., adnt rm net-edge)
     Rm {
         /// App name to remove (without 'adnt-' prefix)
         app: String,

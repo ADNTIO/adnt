@@ -15,6 +15,7 @@
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 use anyhow::{Context, Result};
+use base64::prelude::*;
 use colored::Colorize;
 use indicatif::{ProgressBar, ProgressStyle};
 use serde::{Deserialize, Serialize};
@@ -24,6 +25,8 @@ use std::path::{Path, PathBuf};
 use std::process::Stdio;
 use std::time::Instant;
 use tokio::process::Command;
+
+use crate::secure_fs::private_dir;
 
 use crate::github::GitHubClient;
 
@@ -52,7 +55,9 @@ impl ToolManager {
         let tools_dir = home.join(".adnt").join("tools");
         let state_file = home.join(".adnt").join("state.json");
 
+        private_dir(&home.join(".adnt")).context("Failed to create adnt directory")?;
         fs::create_dir_all(&tools_dir).context("Failed to create tools directory")?;
+        scrub_legacy_credentials(&tools_dir);
 
         let state = if state_file.exists() {
             let content = fs::read_to_string(&state_file)?;
@@ -77,6 +82,7 @@ impl ToolManager {
 
     /// Remove a tool's cached artifacts from disk and state
     pub fn remove_tool(&mut self, tool_name: &str) -> Result<()> {
+        validate_tool_name(tool_name)?;
         let full_tool_name = format!("adnt-{}", tool_name);
         let tool_path = self.tools_dir.join(&full_tool_name);
 
@@ -109,19 +115,21 @@ impl ToolManager {
         Ok(())
     }
 
-    /// Convert a GitHub HTTPS URL to an authenticated URL using the OAuth token
-    fn get_authenticated_url(&self, repo_url: &str) -> String {
+    /// Build a git command authenticated with the GitHub token, if any.
+    /// The token is passed as environment-scoped config so it never ends up
+    /// on the command line or in the repository's `.git/config`.
+    fn git_command(&self) -> Command {
+        let mut cmd = Command::new("git");
         if let Some(token) = self.github_client.get_token() {
-            // Convert https://github.com/... to https://oauth2:TOKEN@github.com/...
-            if repo_url.starts_with("https://github.com/") {
-                return repo_url.replace(
-                    "https://github.com/",
-                    &format!("https://oauth2:{}@github.com/", token),
+            let credentials = BASE64_STANDARD.encode(format!("x-access-token:{}", token));
+            cmd.env("GIT_CONFIG_COUNT", "1")
+                .env("GIT_CONFIG_KEY_0", "http.https://github.com/.extraheader")
+                .env(
+                    "GIT_CONFIG_VALUE_0",
+                    format!("Authorization: Basic {}", credentials),
                 );
-            }
         }
-        // Return original URL if no token or not a GitHub HTTPS URL
-        repo_url.to_string()
+        cmd
     }
 
     async fn get_latest_commit(&self, repo_path: &Path) -> Result<String> {
@@ -133,29 +141,10 @@ impl ToolManager {
         Ok(String::from_utf8(output.stdout)?.trim().to_string())
     }
 
-    async fn get_remote_commit(&self, repo_url: &str) -> Result<String> {
-        // Use authenticated URL if we have a token
-        let remote_url = self.get_authenticated_url(repo_url);
-
-        let output = Command::new("git")
-            .args(["ls-remote", &remote_url, "HEAD"])
-            .output()
-            .await?;
-
-        let stdout = String::from_utf8(output.stdout)?;
-        let commit = stdout
-            .split_whitespace()
-            .next()
-            .context("No commit found")?;
-        Ok(commit.to_string())
-    }
-
     async fn clone_repo(&self, repo_url: &str, dest: &Path) -> Result<()> {
-        // Use authenticated URL if we have a token
-        let clone_url = self.get_authenticated_url(repo_url);
-
-        let output = Command::new("git")
-            .args(["clone", &clone_url, dest.to_str().unwrap()])
+        let output = self
+            .git_command()
+            .args(["clone", repo_url, dest.to_str().unwrap()])
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             .output()
@@ -172,41 +161,11 @@ impl ToolManager {
     }
 
     async fn update_repo(&self, repo_path: &Path) -> Result<()> {
-        // If we have a token, update the remote URL to use authentication
-        if self.github_client.has_token() {
-            // Get current remote URL
-            let output = Command::new("git")
-                .args([
-                    "-C",
-                    repo_path.to_str().unwrap(),
-                    "remote",
-                    "get-url",
-                    "origin",
-                ])
-                .output()
-                .await?;
+        let repo = repo_path.to_str().unwrap();
 
-            if output.status.success() {
-                let current_url = String::from_utf8_lossy(&output.stdout).trim().to_string();
-                let auth_url = self.get_authenticated_url(&current_url);
-
-                // Update remote URL with authentication
-                Command::new("git")
-                    .args([
-                        "-C",
-                        repo_path.to_str().unwrap(),
-                        "remote",
-                        "set-url",
-                        "origin",
-                        &auth_url,
-                    ])
-                    .output()
-                    .await?;
-            }
-        }
-
-        let output = Command::new("git")
-            .args(["-C", repo_path.to_str().unwrap(), "pull", "--ff-only"])
+        let output = self
+            .git_command()
+            .args(["-C", repo, "pull", "--ff-only"])
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             .output()
@@ -242,7 +201,8 @@ impl ToolManager {
     }
 
     async fn run_binary(&self, repo_path: &Path, tool_name: &str, args: Vec<String>) -> Result<()> {
-        let binary_path = repo_path.join("target/release").join(tool_name);
+        let binary_name = format!("{}{}", tool_name, std::env::consts::EXE_SUFFIX);
+        let binary_path = repo_path.join("target/release").join(binary_name);
 
         let status = Command::new(binary_path).args(&args).status().await?;
 
@@ -316,15 +276,9 @@ impl ToolManager {
         args: Vec<String>,
         force_update: bool,
     ) -> Result<()> {
+        validate_tool_name(tool_name)?;
         let tool_path = self.tools_dir.join(format!("adnt-{}", tool_name));
         let full_tool_name = format!("adnt-{}", tool_name);
-
-        // Get repo URL from GitHub if not provided
-        let repo_url = if let Some(url) = repo_url {
-            url.to_string()
-        } else {
-            self.github_client.get_tool_repo_url(tool_name).await?
-        };
 
         if !tool_path.exists() {
             println!(
@@ -332,13 +286,10 @@ impl ToolManager {
                 format!("Tool '{}' not found. Installing...", full_tool_name).yellow()
             );
 
+            let repo_url = self.resolve_repo_url(tool_name, repo_url).await?;
+
             let start = Instant::now();
-            let pb = ProgressBar::new_spinner();
-            pb.set_style(
-                ProgressStyle::default_spinner()
-                    .template("{spinner:.green} {msg}")
-                    .unwrap(),
-            );
+            let pb = spinner("{spinner:.green} {msg}");
 
             pb.set_message("Cloning repository...");
             self.clone_repo(&repo_url, &tool_path).await?;
@@ -347,16 +298,7 @@ impl ToolManager {
             self.build_tool(&tool_path).await?;
 
             let commit = self.get_latest_commit(&tool_path).await?;
-
-            self.state.tools.insert(
-                full_tool_name.clone(),
-                ToolInfo {
-                    repo_url: repo_url.clone(),
-                    last_commit: commit,
-                    installed_at: chrono::Local::now().to_rfc3339(),
-                },
-            );
-            self.save_state()?;
+            self.record_install(full_tool_name.clone(), repo_url, commit)?;
 
             pb.finish_and_clear();
             let duration = start.elapsed();
@@ -364,49 +306,38 @@ impl ToolManager {
                 "{}",
                 format!("✓ Installation completed in {:.2}s", duration.as_secs_f64()).green()
             );
-        } else {
-            // Check for updates
-            if force_update {
-                let pb: ProgressBar = ProgressBar::new_spinner();
-                pb.set_style(
-                    ProgressStyle::default_spinner()
-                        .template("{spinner:.cyan} {msg}")
-                        .unwrap(),
-                );
-                pb.set_message("Checking for updates...");
+        } else if force_update {
+            // Reuse the URL recorded at install time to avoid a GitHub API call
+            let repo_url = match self.state.tools.get(&full_tool_name) {
+                Some(info) => info.repo_url.clone(),
+                None => self.resolve_repo_url(tool_name, repo_url).await?,
+            };
 
-                let local_commit = self.get_latest_commit(&tool_path).await?;
-                let remote_commit = self.get_remote_commit(&repo_url).await?;
+            let start = Instant::now();
+            let pb = spinner("{spinner:.cyan} {msg}");
 
-                if local_commit != remote_commit {
-                    if force_update {
-                        pb.set_message("Force updating...");
-                    } else {
-                        pb.set_message("Update available. Updating...");
-                    }
-                    let start = Instant::now();
+            pb.set_message("Force updating...");
+            let previous_commit = self.get_latest_commit(&tool_path).await?;
+            self.update_repo(&tool_path).await?;
 
-                    self.update_repo(&tool_path).await?;
-                    self.build_tool(&tool_path).await?;
+            pb.set_message("Building tool...");
+            self.build_tool(&tool_path).await?;
 
-                    self.state.tools.insert(
-                        full_tool_name.clone(),
-                        ToolInfo {
-                            repo_url: repo_url.clone(),
-                            last_commit: remote_commit,
-                            installed_at: chrono::Local::now().to_rfc3339(),
-                        },
-                    );
-                    self.save_state()?;
+            let commit = self.get_latest_commit(&tool_path).await?;
+            let up_to_date = commit == previous_commit;
+            self.record_install(full_tool_name.clone(), repo_url, commit)?;
 
-                    pb.finish_and_clear();
-                    let duration = start.elapsed();
-                    println!(
-                        "{}",
-                        format!("✓ Update completed in {:.2}s", duration.as_secs_f64()).green()
-                    );
-                }
-            }
+            pb.finish_and_clear();
+            let duration = start.elapsed();
+            let message = if up_to_date {
+                "✓ Tool is up to date, rebuilt"
+            } else {
+                "✓ Update completed"
+            };
+            println!(
+                "{}",
+                format!("{} in {:.2}s", message, duration.as_secs_f64()).green()
+            );
         }
 
         // Run the tool
@@ -416,6 +347,25 @@ impl ToolManager {
         self.run_binary(&tool_path, &full_tool_name, args).await?;
 
         Ok(())
+    }
+
+    async fn resolve_repo_url(&self, tool_name: &str, repo_url: Option<&str>) -> Result<String> {
+        match repo_url {
+            Some(url) => Ok(url.to_string()),
+            None => self.github_client.get_tool_repo_url(tool_name).await,
+        }
+    }
+
+    fn record_install(&mut self, name: String, repo_url: String, commit: String) -> Result<()> {
+        self.state.tools.insert(
+            name,
+            ToolInfo {
+                repo_url,
+                last_commit: commit,
+                installed_at: chrono::Local::now().to_rfc3339(),
+            },
+        );
+        self.save_state()
     }
 
     #[cfg(test)]
@@ -440,10 +390,75 @@ impl ToolManager {
     }
 }
 
+/// Rejects names that could escape the tools directory (e.g. `../..`).
+fn validate_tool_name(tool_name: &str) -> Result<()> {
+    let valid = !tool_name.is_empty()
+        && !tool_name.starts_with('.')
+        && tool_name
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '_' | '-'));
+    if !valid {
+        anyhow::bail!("Invalid tool name '{}'", tool_name);
+    }
+    Ok(())
+}
+
+/// Older versions embedded the GitHub token in the remote URL of every clone:
+/// strip it so it no longer sits in clear in `.git/config`.
+fn scrub_legacy_credentials(tools_dir: &Path) {
+    let Ok(entries) = fs::read_dir(tools_dir) else {
+        return;
+    };
+    for repo in entries.flatten().map(|entry| entry.path()) {
+        let has_credentials = fs::read_to_string(repo.join(".git/config"))
+            .is_ok_and(|config| config.contains("@github.com"));
+        if !has_credentials {
+            continue;
+        }
+        let Ok(output) = std::process::Command::new("git")
+            .arg("-C")
+            .arg(&repo)
+            .args(["remote", "get-url", "origin"])
+            .output()
+        else {
+            continue;
+        };
+        let current_url = String::from_utf8_lossy(&output.stdout).trim().to_string();
+        if let Some(clean_url) = strip_github_credentials(&current_url) {
+            let _ = std::process::Command::new("git")
+                .arg("-C")
+                .arg(&repo)
+                .args(["remote", "set-url", "origin", &clean_url])
+                .output();
+        }
+    }
+}
+
+/// Returns the URL without credentials if it is a GitHub HTTPS URL carrying any.
+fn strip_github_credentials(url: &str) -> Option<String> {
+    let rest = url.strip_prefix("https://")?;
+    let (userinfo, path) = rest.split_once('@')?;
+    if userinfo.contains('/') || !path.starts_with("github.com/") {
+        return None;
+    }
+    Some(format!("https://{}", path))
+}
+
+fn spinner(template: &str) -> ProgressBar {
+    let pb = ProgressBar::new_spinner();
+    pb.set_style(ProgressStyle::default_spinner().template(template).unwrap());
+    pb
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use tempfile::tempdir;
+
+    fn load_saved_state(state_file: &Path) -> ToolsState {
+        let content = fs::read_to_string(state_file).unwrap();
+        serde_json::from_str(&content).unwrap()
+    }
 
     #[test]
     fn test_remove_tool_not_installed() {
@@ -454,8 +469,7 @@ mod tests {
         let mut manager = ToolManager::new_with_paths(tools_dir, state_file).unwrap();
 
         // Should succeed without error when tool doesn't exist
-        let result = manager.remove_tool("nonexistent");
-        assert!(result.is_ok());
+        manager.remove_tool("nonexistent").unwrap();
     }
 
     #[test]
@@ -483,8 +497,7 @@ mod tests {
         );
 
         // Remove the tool
-        let result = manager.remove_tool("test-app");
-        assert!(result.is_ok());
+        manager.remove_tool("test-app").unwrap();
 
         // Verify directory is removed
         assert!(!tool_dir.exists());
@@ -493,9 +506,9 @@ mod tests {
         assert!(!manager.state.tools.contains_key("adnt-test-app"));
 
         // Verify state is persisted to disk
-        let state_content = fs::read_to_string(&state_file).unwrap();
-        let saved_state: ToolsState = serde_json::from_str(&state_content).unwrap();
-        assert!(!saved_state.tools.contains_key("adnt-test-app"));
+        assert!(!load_saved_state(&state_file)
+            .tools
+            .contains_key("adnt-test-app"));
     }
 
     #[test]
@@ -517,15 +530,127 @@ mod tests {
         );
 
         // Remove the tool - should clean up state even without directory
-        let result = manager.remove_tool("orphan-app");
-        assert!(result.is_ok());
+        manager.remove_tool("orphan-app").unwrap();
 
         // Verify in-memory state is updated
         assert!(!manager.state.tools.contains_key("adnt-orphan-app"));
 
         // Verify state is persisted to disk
-        let state_content = fs::read_to_string(&state_file).unwrap();
-        let saved_state: ToolsState = serde_json::from_str(&state_content).unwrap();
-        assert!(!saved_state.tools.contains_key("adnt-orphan-app"));
+        assert!(!load_saved_state(&state_file)
+            .tools
+            .contains_key("adnt-orphan-app"));
+    }
+
+    #[test]
+    fn test_strip_github_credentials() {
+        assert_eq!(
+            strip_github_credentials("https://oauth2:ghp_secret@github.com/ADNTIO/adnt-x.git"),
+            Some("https://github.com/ADNTIO/adnt-x.git".to_string())
+        );
+        assert_eq!(
+            strip_github_credentials("https://github.com/ADNTIO/adnt-x.git"),
+            None
+        );
+        assert_eq!(
+            strip_github_credentials("https://user@gitlab.com/ADNTIO/adnt-x.git"),
+            None
+        );
+        assert_eq!(
+            strip_github_credentials("git@github.com:ADNTIO/adnt-x.git"),
+            None
+        );
+    }
+
+    #[test]
+    fn test_validate_tool_name() {
+        assert!(validate_tool_name("net-edge").is_ok());
+        assert!(validate_tool_name("my_tool.v2").is_ok());
+        assert!(validate_tool_name("").is_err());
+        assert!(validate_tool_name("..").is_err());
+        assert!(validate_tool_name("net-edge/../../..").is_err());
+    }
+
+    #[test]
+    fn test_remove_tool_rejects_path_traversal() {
+        let temp_dir = tempdir().unwrap();
+        let tools_dir = temp_dir.path().join("tools");
+        let state_file = temp_dir.path().join("state.json");
+        let victim = temp_dir.path().join("victim");
+        fs::create_dir_all(&victim).unwrap();
+
+        let mut manager = ToolManager::new_with_paths(tools_dir, state_file).unwrap();
+
+        assert!(manager.remove_tool("x/../../victim").is_err());
+        assert!(victim.exists());
+    }
+
+    #[test]
+    fn test_record_install_persists_state() {
+        let temp_dir = tempdir().unwrap();
+        let tools_dir = temp_dir.path().join("tools");
+        let state_file = temp_dir.path().join("state.json");
+
+        let mut manager =
+            ToolManager::new_with_paths(tools_dir.clone(), state_file.clone()).unwrap();
+        manager
+            .record_install(
+                "adnt-demo".to_string(),
+                "https://github.com/ADNTIO/adnt-demo.git".to_string(),
+                "abc123".to_string(),
+            )
+            .unwrap();
+
+        let saved = load_saved_state(&state_file);
+        let info = &saved.tools["adnt-demo"];
+        assert_eq!(info.repo_url, "https://github.com/ADNTIO/adnt-demo.git");
+        assert_eq!(info.last_commit, "abc123");
+        assert!(chrono::DateTime::parse_from_rfc3339(&info.installed_at).is_ok());
+
+        // A new manager reads the recorded install back
+        let reloaded = ToolManager::new_with_paths(tools_dir, state_file).unwrap();
+        assert!(reloaded.state.tools.contains_key("adnt-demo"));
+    }
+
+    #[test]
+    fn test_scrub_legacy_credentials() {
+        let temp_dir = tempdir().unwrap();
+        let git = |repo: &Path, args: &[&str]| {
+            let output = std::process::Command::new("git")
+                .arg("-C")
+                .arg(repo)
+                .args(args)
+                .output()
+                .unwrap();
+            String::from_utf8_lossy(&output.stdout).trim().to_string()
+        };
+        let legacy = temp_dir.path().join("adnt-legacy");
+        let clean = temp_dir.path().join("adnt-clean");
+        for (repo, url) in [
+            (
+                &legacy,
+                "https://oauth2:ghp_secret@github.com/ADNTIO/adnt-legacy.git",
+            ),
+            (&clean, "https://github.com/ADNTIO/adnt-clean.git"),
+        ] {
+            fs::create_dir_all(repo).unwrap();
+            git(repo, &["init", "-q"]);
+            git(repo, &["remote", "add", "origin", url]);
+        }
+        // Not a git repository: ignored
+        fs::create_dir_all(temp_dir.path().join("not-a-repo")).unwrap();
+
+        scrub_legacy_credentials(temp_dir.path());
+
+        assert_eq!(
+            git(&legacy, &["remote", "get-url", "origin"]),
+            "https://github.com/ADNTIO/adnt-legacy.git"
+        );
+        assert!(!fs::read_to_string(legacy.join(".git/config"))
+            .unwrap()
+            .contains("ghp_secret"));
+        assert_eq!(
+            git(&clean, &["remote", "get-url", "origin"]),
+            "https://github.com/ADNTIO/adnt-clean.git"
+        );
     }
 }

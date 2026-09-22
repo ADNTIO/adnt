@@ -17,6 +17,8 @@
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use std::env;
+
+use crate::secure_fs::{private_dir, restrict_to_owner, write_private};
 use std::fs;
 use std::time::Duration;
 
@@ -90,6 +92,8 @@ impl GitHubClient {
         if let Some(home) = dirs::home_dir() {
             let config_path = home.join(".config/adnt/config.json");
             if config_path.exists() {
+                // Older versions wrote the token with the default umask
+                let _ = restrict_to_owner(&config_path);
                 if let Ok(content) = fs::read_to_string(&config_path) {
                     if let Ok(config) = serde_json::from_str::<AdntConfig>(&content) {
                         if config.github_token.is_some() {
@@ -157,14 +161,14 @@ impl GitHubClient {
         let config_dir = home.join(".config/adnt");
         let config_path = config_dir.join("config.json");
 
-        fs::create_dir_all(&config_dir).context("Failed to create config directory")?;
+        private_dir(&config_dir).context("Failed to create config directory")?;
 
         let config = AdntConfig {
             github_token: Some(token.to_string()),
         };
 
         let content = serde_json::to_string_pretty(&config)?;
-        fs::write(&config_path, content)?;
+        write_private(&config_path, &content)?;
 
         Ok(())
     }
