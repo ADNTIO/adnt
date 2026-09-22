@@ -67,6 +67,9 @@ enum Commands {
         app: String,
     },
 
+    /// Update adnt itself to the latest version from GitHub
+    Update,
+
     /// Configure ADNT settings
     Config {
         #[command(subcommand)]
@@ -351,6 +354,9 @@ async fn main() -> Result<()> {
         }
         Commands::Rm { app } => {
             manager.remove_tool(&app)?;
+        }
+        Commands::Update => {
+            manager.self_update().await?;
         }
         Commands::Config { subcommand } => {
             handle_config_command(subcommand).await?;

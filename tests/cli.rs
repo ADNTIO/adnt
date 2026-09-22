@@ -60,7 +60,7 @@ fn help_lists_commands() {
 
     assert!(output.status.success());
     let stdout = String::from_utf8_lossy(&output.stdout);
-    for command in ["list", "run", "rm", "config", "ia"] {
+    for command in ["list", "run", "rm", "update", "config", "ia"] {
         assert!(
             stdout.contains(command),
             "missing '{}' in:\n{}",

@@ -2,7 +2,7 @@
 
 A dynamic CLI tools manager written in Rust that automatically discovers, installs, updates, and manages all ADNT tools from the ADNTIO GitHub organization.
 
-**Key Features:** Auto-discovery of tools, seamless installation on first use, automatic version checking, GitHub OAuth authentication, and zero-configuration tool management.
+**Key Features:** Auto-discovery of tools, seamless installation on first use, offline cached runs, self-update capability, GitHub OAuth authentication, and zero-configuration tool management.
 
 ## Features
 
@@ -10,6 +10,7 @@ A dynamic CLI tools manager written in Rust that automatically discovers, instal
 - **Automatic installation** - Installs tools on first use from GitHub
 - **Offline cached runs** - Installed tools run from the local cache without any network access
 - **Explicit updates** - `--force` pulls and rebuilds a cached tool
+- **Self-update** - Update adnt itself with `adnt update`
 - **Installation time tracking** - Displays time taken for installation/updates
 - **Centralized management** - All tools stored in `~/.adnt/tools`
 - **Dynamic tool execution** - Run any ADNT tool without hardcoding
@@ -75,6 +76,19 @@ Cached tools are never updated automatically. Pull the latest version and rebuil
 adnt --force run net-edge
 adnt -f run net-edge
 ```
+
+### Self-update
+
+Update adnt itself to the latest version from GitHub:
+
+```bash
+adnt update
+```
+
+This will:
+1. Check the latest commit on the default branch
+2. Compare with the currently installed version
+3. If different, update using `cargo install --git`
 
 ### Verbose mode
 
@@ -269,6 +283,9 @@ adnt run my-custom-tool --some-arg value
 
 # Combine flags
 adnt -vf run net-edge
+
+# Update adnt itself
+adnt update
 
 # Use with GitHub token from environment
 GITHUB_TOKEN=ghp_xxx adnt list
