@@ -8,13 +8,14 @@ A dynamic CLI tools manager written in Rust that automatically discovers, instal
 
 - **Automatic tool discovery** - Scans ADNTIO GitHub organization for all `adnt-*` repositories
 - **Automatic installation** - Installs tools on first use from GitHub
-- **Version checking** - Automatically checks for updates before running
-- **Force update** - Option to force rebuild even when up to date
+- **Offline cached runs** - Installed tools run from the local cache without any network access
+- **Explicit updates** - `--force` pulls and rebuilds a cached tool
 - **Installation time tracking** - Displays time taken for installation/updates
 - **Centralized management** - All tools stored in `~/.adnt/tools`
 - **Dynamic tool execution** - Run any ADNT tool without hardcoding
 - **GitHub authentication** - Support for GitHub tokens via multiple methods
 - **Rate limit friendly** - Uses authentication to avoid GitHub API limits
+- **AI agents** - `adnt ia install` sets up Hermes or OpenCode on the ADNT inference API
 
 ## Installation
 
@@ -68,7 +69,7 @@ adnt run net-edge --help
 
 ### Force update
 
-Force update a tool even if it's already up to date:
+Cached tools are never updated automatically. Pull the latest version and rebuild with:
 
 ```bash
 adnt --force run net-edge
@@ -83,6 +84,30 @@ See all repositories from ADNTIO organization:
 adnt --verbose list
 adnt -v list
 ```
+
+## AI agents
+
+Install (or update) an AI coding agent wired to the ADNT inference API (LiteLLM, OpenAI-compatible):
+
+```bash
+adnt ia install opencode
+adnt ia install hermes
+adnt ia install hermes --model coder   # default model: agent
+```
+
+The command:
+- installs the agent with its official installer, or updates it if already present:
+  - Linux / macOS: the official `install.sh` scripts (bash)
+  - Windows: `install.ps1` (PowerShell) for Hermes, `npm install -g opencode-ai` for OpenCode (requires Node.js)
+- logs in through Authentik (OIDC device flow, public client `vllm-cli`, no secret)
+- writes the provider and the access token to the agent's config, readable by the owner only:
+  - OpenCode: `~/.config/opencode/opencode.json` (provider `vllm`) and the `security-review` SAST agent
+  - Hermes: `~/.hermes/config.yaml`, or `%LOCALAPPDATA%\hermes\config.yaml` on Windows (provider `adnt`, models with at least 64k of context)
+- restricts the agent to ADNT models: other providers, fallbacks, remote catalogs, session sharing and borrowed credentials (GitHub Copilot, Claude Code) are disabled
+
+Run the same command again when the token expires.
+
+Environment overrides: `AUTHENTIK_URL`, `VLLM_URL`, `VLLM_PUBLIC_CLIENT_ID`, `HERMES_HOME`, `XDG_CONFIG_HOME`.
 
 ## GitHub Authentication
 
@@ -173,14 +198,13 @@ If you prefer to create a token manually instead of using `adnt config login`:
 - Executes the tool with provided arguments
 
 **On subsequent executions:**
-- Checks if an update is available (compares git commits)
-- Updates and recompiles if necessary
-- Displays update time
-- Executes the tool
+- Executes the cached tool directly, without checking for updates or contacting GitHub
 
 **With --force flag:**
-- Forces git pull and rebuild even if already up to date
-- Useful for testing or after manual changes
+- Pulls the latest commit and rebuilds, even if already up to date
+- Reuses the repository URL recorded at install time
+- Displays update time
+- Useful to get updates, or to repair a failed build
 
 ## Structure
 
@@ -189,7 +213,9 @@ adnt/
 ├── src/
 │   ├── main.rs           # CLI entry point and command routing
 │   ├── tool_manager.rs   # Tool installation, update, and execution logic
-│   └── github.rs         # GitHub API client for repository discovery
+│   ├── github.rs         # GitHub API client for repository discovery
+│   ├── secure_fs.rs      # Owner-only, atomic writes for files holding tokens
+│   └── ia/               # `adnt ia`: AI agents setup (OIDC login, OpenCode, Hermes)
 ├── Cargo.toml
 └── README.md
 ```
@@ -216,6 +242,8 @@ adnt run <tool-name>
 - `chrono` - Date/time handling
 - `reqwest` - HTTP client for GitHub API
 - `open` - Browser launcher for OAuth flow
+- `base64` - Git authentication header
+- `serde_norway` - Hermes YAML configuration
 
 ## Examples
 

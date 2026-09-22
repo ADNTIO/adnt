@@ -19,6 +19,7 @@ use clap::{Parser, Subcommand};
 use colored::Colorize;
 
 mod github;
+mod ia;
 mod secure_fs;
 mod tool_manager;
 
@@ -70,6 +71,26 @@ enum Commands {
     Config {
         #[command(subcommand)]
         subcommand: ConfigCommands,
+    },
+
+    /// Manage AI agents wired to the ADNT inference API
+    Ia {
+        #[command(subcommand)]
+        subcommand: IaCommands,
+    },
+}
+
+#[derive(Subcommand)]
+enum IaCommands {
+    /// Install or update an agent, log in and write its configuration
+    /// (run it again when the token expires)
+    Install {
+        #[arg(value_enum)]
+        agent: ia::Agent,
+
+        /// Default model (hermes only)
+        #[arg(long)]
+        model: Option<String>,
     },
 }
 
@@ -333,6 +354,11 @@ async fn main() -> Result<()> {
         }
         Commands::Config { subcommand } => {
             handle_config_command(subcommand).await?;
+        }
+        Commands::Ia {
+            subcommand: IaCommands::Install { agent, model },
+        } => {
+            ia::install(agent, model).await?;
         }
     }
 
