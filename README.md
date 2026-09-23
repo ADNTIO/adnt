@@ -137,6 +137,7 @@ The command:
   - OpenCode: `~/.config/opencode/opencode.json` (provider `vllm`) and the `security-review` SAST agent
   - Hermes: `~/.hermes/config.yaml`, or `%LOCALAPPDATA%\hermes\config.yaml` on Windows (provider `adnt`, models with at least 64k of context)
 - restricts the agent to ADNT models: other providers, fallbacks, remote catalogs, session sharing and borrowed credentials (GitHub Copilot, Claude Code) are disabled
+- checks that the agent command is reachable: on Windows, Hermes is staged in `%LOCALAPPDATA%\hermes\bin`, which is added to the user PATH if missing. The terminal that ran `adnt` keeps its old PATH: open a new one (or run the command printed by `adnt` for the current session)
 
 Run the same command again when the token expires.
 
