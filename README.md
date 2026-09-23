@@ -20,6 +20,25 @@ A dynamic CLI tools manager written in Rust that automatically discovers, instal
 
 ## Installation
 
+### Prerequisites
+
+- A Rust toolchain ([rustup](https://rustup.rs)). No cmake, perl or extra
+  native library is needed: TLS is provided by `rustls` with the pure-Rust
+  `ring` backend.
+- **Windows**: use the MSVC toolchain (`stable-x86_64-pc-windows-msvc`, the
+  rustup default), which needs the *Visual Studio Build Tools* with the
+  "Desktop development with C++" workload:
+
+  ```powershell
+  winget install Microsoft.VisualStudio.2022.BuildTools --override "--wait --passive --add Microsoft.VisualStudio.Workload.VCTools --includeRecommended"
+  rustup default stable-x86_64-pc-windows-msvc
+  ```
+
+  The GNU toolchain (`*-pc-windows-gnu`) also works but requires MinGW-w64 on
+  the `PATH` (it provides `dlltool.exe`, `gcc` and `ld`), for example
+  `winget install -e --id BrechtSanders.WinLibs.POSIX.UCRT`. Without it the
+  build fails with `dlltool.exe: program not found`.
+
 ### Recommended method (from Git)
 
 ```bash
@@ -254,7 +273,7 @@ adnt run <tool-name>
 - `indicatif` - Progress bars
 - `dirs` - System directories
 - `chrono` - Date/time handling
-- `reqwest` - HTTP client for GitHub API
+- `reqwest` / `rustls` (`ring` provider) - HTTP client for GitHub API, pure-Rust TLS
 - `open` - Browser launcher for OAuth flow
 - `base64` - Git authentication header
 - `serde_norway` - Hermes YAML configuration
