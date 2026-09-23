@@ -18,7 +18,9 @@
 //! models stay reachable: no fallback, auxiliary tasks and sub-agents on the main
 //! model, remote catalog disabled, credentials of other providers removed.
 
-use super::{api_base_url, find_in_path, login, run_installer, Model, Shell, MODELS};
+use super::{
+    api_base_url, ensure_on_path, find_in_path, login, run_installer, Model, Shell, MODELS,
+};
 use crate::secure_fs::write_private;
 use anyhow::{Context, Result};
 use colored::Colorize;
@@ -63,6 +65,9 @@ pub async fn install(model: Option<String>) -> Result<()> {
     }
 
     ensure_hermes().await?;
+    if let Ok(bin_dir) = hermes_bin_dir() {
+        ensure_on_path("hermes", &bin_dir);
+    }
     let access_token = login().await?;
 
     let home = hermes_home()?;
@@ -72,7 +77,7 @@ pub async fn install(model: Option<String>) -> Result<()> {
     println!(
         "\n{}",
         format!(
-            "→ Ready: `hermes` (other models: adnt ia install hermes --model {})",
+            "→ Ready: run `hermes` (other models: adnt ia install hermes --model {})",
             agent_models.join("|")
         )
         .green()
@@ -100,19 +105,39 @@ fn hermes_home() -> Result<PathBuf> {
         .context("Could not determine Hermes home directory")
 }
 
+/// Directory where the official installer stages the `hermes` launcher and
+/// adds to the user PATH: `%HERMES_HOME%\bin` on Windows, `~/.local/bin`
+/// elsewhere.
+fn hermes_bin_dir() -> Result<PathBuf> {
+    if cfg!(windows) {
+        hermes_home().map(|home| home.join("bin"))
+    } else {
+        dirs::home_dir()
+            .map(|home| home.join(".local/bin"))
+            .context("Could not determine home directory")
+    }
+}
+
 /// `hermes` from PATH, else where the official installers put it (not yet on
-/// the PATH of the current shell right after an install).
+/// the PATH of the current shell right after an install): the staged launcher
+/// (`.exe` or `.cmd` on Windows), else the venv entry point of older installs.
 fn hermes_bin() -> Option<PathBuf> {
     let installed = || {
-        if cfg!(windows) {
-            hermes_home()
-                .ok()
-                .map(|home| home.join("hermes-agent/venv/Scripts/hermes.exe"))
+        let bin_dir = hermes_bin_dir().ok()?;
+        let candidates = if cfg!(windows) {
+            vec![
+                bin_dir.join("hermes.exe"),
+                bin_dir.join("hermes.cmd"),
+                hermes_home()
+                    .ok()?
+                    .join("hermes-agent/venv/Scripts/hermes.exe"),
+            ]
         } else {
-            dirs::home_dir().map(|home| home.join(".local/bin/hermes"))
-        }
+            vec![bin_dir.join("hermes")]
+        };
+        candidates.into_iter().find(|path| path.is_file())
     };
-    find_in_path("hermes").or_else(|| installed().filter(|path| path.is_file()))
+    find_in_path("hermes").or_else(installed)
 }
 
 async fn ensure_hermes() -> Result<()> {

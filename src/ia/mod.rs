@@ -26,7 +26,7 @@ use clap::ValueEnum;
 use colored::Colorize;
 use std::env;
 use std::io::Write;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::{Command, ExitStatus, Stdio};
 
 const DEFAULT_VLLM_URL: &str = "https://vllm.k8s.adnt.io";
@@ -189,11 +189,88 @@ fn check_installed(status: ExitStatus, installer: &str) -> Result<()> {
     if !status.success() {
         anyhow::bail!("Installer failed: {}", installer);
     }
-    println!(
-        "{}",
-        "  (restart your shell if the command is not in your PATH yet)".dimmed()
-    );
     Ok(())
+}
+
+/// Makes `name`, staged by its installer in `bin_dir`, reachable from a
+/// shell. The installers add `bin_dir` to the user PATH, but the terminal that
+/// ran `adnt` (and every terminal spawned by the same parent, e.g. an IDE)
+/// keeps the environment it started with: on Windows the user PATH is checked
+/// and completed in the registry, then the user is told how to refresh the
+/// current session.
+fn ensure_on_path(name: &str, bin_dir: &Path) {
+    if find_in_path(name).is_some() {
+        return;
+    }
+    if cfg!(windows) {
+        match add_to_user_path(bin_dir) {
+            Ok(true) => println!(
+                "{}",
+                format!("Added to user PATH: {}", bin_dir.display()).green()
+            ),
+            Ok(false) => {}
+            Err(err) => println!(
+                "{}",
+                format!(
+                    "Could not update the user PATH ({}): add {} to it manually",
+                    err,
+                    bin_dir.display()
+                )
+                .yellow()
+            ),
+        }
+    }
+    println!(
+        "\n{}",
+        format!(
+            "⚠ `{}` is not on the PATH of this terminal yet: open a new terminal \
+             (restart the IDE if this one was opened from it), or for this session run:",
+            name
+        )
+        .yellow()
+    );
+    for line in refresh_path_commands(bin_dir) {
+        println!("    {}", line);
+    }
+}
+
+/// Adds `dir` to the user PATH (`HKCU\Environment`) unless already there.
+/// Returns whether it was added.
+fn add_to_user_path(dir: &Path) -> Result<bool> {
+    let output = Command::new("powershell")
+        .args(["-NoProfile", "-Command", &user_path_script(dir)])
+        .output()
+        .context("powershell not found")?;
+    if !output.status.success() {
+        anyhow::bail!("{}", String::from_utf8_lossy(&output.stderr).trim());
+    }
+    Ok(String::from_utf8_lossy(&output.stdout).trim() == "added")
+}
+
+/// PowerShell script prepending `dir` to the user PATH if missing, printing
+/// `added` or `present`.
+fn user_path_script(dir: &Path) -> String {
+    let dir = dir.display().to_string().replace('\'', "''");
+    format!(
+        "$dir = '{}'; \
+         $user = [Environment]::GetEnvironmentVariable('Path', 'User'); \
+         if (($user -split ';') -contains $dir) {{ 'present' }} \
+         else {{ [Environment]::SetEnvironmentVariable('Path', ($dir + ';' + $user), 'User'); 'added' }}",
+        dir
+    )
+}
+
+/// Shell commands putting `dir` on the PATH of the current session.
+fn refresh_path_commands(dir: &Path) -> Vec<String> {
+    let dir = dir.display();
+    if cfg!(windows) {
+        vec![
+            format!("PowerShell:  $env:Path = \"{};$env:Path\"", dir),
+            format!("cmd:         set PATH={};%PATH%", dir),
+        ]
+    } else {
+        vec![format!("export PATH=\"{}:$PATH\"", dir)]
+    }
 }
 
 /// Reads a URL from the environment (or its default), requiring HTTPS: the
@@ -251,6 +328,28 @@ mod tests {
             args[4],
             "& ([scriptblock]::Create([Console]::In.ReadToEnd())) -SkipSetup"
         );
+    }
+
+    #[test]
+    fn test_user_path_script() {
+        let script = user_path_script(Path::new(r"C:\Users\O'Neil\AppData\Local\hermes\bin"));
+        assert!(script.starts_with(r"$dir = 'C:\Users\O''Neil\AppData\Local\hermes\bin';"));
+        assert!(script.contains("GetEnvironmentVariable('Path', 'User')"));
+        assert!(script.contains("SetEnvironmentVariable('Path', ($dir + ';' + $user), 'User')"));
+        assert!(
+            !script.contains('"'),
+            "no double quotes: passed through -Command"
+        );
+        assert!(script.contains("'present'") && script.contains("'added'"));
+    }
+
+    #[test]
+    fn test_refresh_path_commands_name_the_dir() {
+        let commands = refresh_path_commands(Path::new("/home/me/.local/bin"));
+        assert!(!commands.is_empty());
+        assert!(commands
+            .iter()
+            .all(|line| line.contains("/home/me/.local/bin") && line.contains("PATH")));
     }
 
     #[test]
