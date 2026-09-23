@@ -74,7 +74,7 @@ impl GitHubClient {
         let token = Self::load_github_token();
 
         // Don't set default headers - we'll add auth per request if token exists
-        let client = reqwest::Client::builder()
+        let client = crate::http::client_builder()
             .user_agent("adnt-tool-manager")
             .build()
             .expect("Failed to create HTTP client");
@@ -177,7 +177,7 @@ impl GitHubClient {
     pub async fn device_flow_login() -> Result<String> {
         use colored::Colorize;
 
-        let client = reqwest::Client::new();
+        let client = crate::http::client();
         let client_id =
             env::var("ADNT_GITHUB_CLIENT_ID").unwrap_or_else(|_| DEFAULT_CLIENT_ID.to_string());
 

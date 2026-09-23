@@ -19,7 +19,11 @@ colored = "3.1"
 indicatif = "0.18"
 dirs = "7.0"
 chrono = "0.4"
-reqwest = { version = "0.13", features = ["json", "form"] }
+# TLS via rustls with the pure-Rust `ring` provider: the default `aws-lc-rs`
+# provider needs cmake and a C compiler, which breaks `cargo install` on a bare
+# Windows machine.
+reqwest = { version = "0.13", default-features = false, features = ["json", "form", "rustls-no-provider", "charset", "http2", "system-proxy"] }
+rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12", "logging"] }
 open = "5.4"
 base64 = "0.23"
 serde_norway = "0.9"

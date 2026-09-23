@@ -61,7 +61,7 @@ pub fn authentik_url() -> Result<String> {
 
 pub async fn device_login() -> Result<Token> {
     let flow = DeviceFlow {
-        client: reqwest::Client::builder()
+        client: crate::http::client_builder()
             .timeout(Duration::from_secs(30))
             .build()?,
         authentik: authentik_url()?,
@@ -206,7 +206,7 @@ mod tests {
 
     fn flow(authentik: String) -> DeviceFlow {
         DeviceFlow {
-            client: reqwest::Client::new(),
+            client: crate::http::client(),
             authentik,
             client_id: "vllm-cli".to_string(),
         }

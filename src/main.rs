@@ -19,6 +19,7 @@ use clap::{Parser, Subcommand};
 use colored::Colorize;
 
 mod github;
+mod http;
 mod ia;
 mod secure_fs;
 mod tool_manager;
